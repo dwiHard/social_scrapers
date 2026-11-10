@@ -5,5 +5,5 @@ Library *core* untuk ekstraksi data dan otomatisasi browser menggunakan arsitekt
 ## Instalasi
 
 ```bash
-pip install git+https://github.com/dwihard/cdp_provider.git@v0.1.0
+pip install git+https://github.com/dwihard/social_scrapers.git@v0.1.0
 ```
