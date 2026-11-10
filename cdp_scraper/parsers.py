@@ -1,0 +1,1 @@
+# Tempat logika parsing response API diletakkan
