@@ -12,7 +12,7 @@ except ImportError:
 
 from config import CDP_URL, BROWSER_TIMEZONE, LOCK_WAIT_TIMEOUT, MAX_CONCURRENT_SESSIONS
 from logger import log_success, log_info, log_warning, log_debug
-from browser.state import LAST_DIAG
+from cdp_scraper.browser.state import LAST_DIAG
 
 _session_slots = threading.BoundedSemaphore(MAX_CONCURRENT_SESSIONS)
 _active_lock = threading.Lock()
