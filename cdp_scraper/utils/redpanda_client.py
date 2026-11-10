@@ -1,23 +1,8 @@
-from config import KAFKA_CONFIG
-from logger import log_debug, log_error, log_success
+"""Shim kompatibilitas; gunakan `cdp_scraper.messaging`."""
+from ..messaging.redpanda import delivery_callback, get_default_producer  # noqa: F401
 
 
-def delivery_callback(err, msg):
-    if err is not None:
-        log_error(f"Delivery gagal: {err}", job="kafka")
-    else:
-        log_debug(f"Delivery berhasil: {msg.topic()} [{msg.partition()}] offset {msg.offset()}", job="kafka")
-
-
-def _create_producer():
-    try:
-        from confluent_kafka import Producer
-        producer = Producer(KAFKA_CONFIG)
-        log_success(f"Producer siap: {KAFKA_CONFIG['bootstrap.servers']}", job="kafka")
-        return producer
-    except Exception as e:
-        log_error(f"Gagal membuat producer: {e}", job="kafka")
-        return None
-
-
-kafka_producer = _create_producer()
+def __getattr__(name):
+    if name == "kafka_producer":
+        return get_default_producer().producer
+    raise AttributeError(name)

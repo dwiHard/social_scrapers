@@ -1,28 +1,35 @@
 import re
 from datetime import datetime, timezone
 
-from flask import jsonify
-
-from config import REQUEST_TIMEOUT
-from browser.state import LAST_DIAG
+from ..browser.state import LAST_DIAG
 
 
 def parse_limit(value, default):
     return int(value) if str(value).isdigit() else default
 
 
-def timeout_response(include_diag=False):
-    body = {"status": "timeout",
-            "message": f"Scraping melebihi batas waktu ({REQUEST_TIMEOUT} detik) atau browser sibuk",
-            "data": [], "total_scraped": 0}
+def timeout_response(request_timeout=30, include_diag=False):
+    body = {
+        "status": "timeout",
+        "message": f"Scraping melebihi batas waktu ({request_timeout} detik) atau browser sibuk",
+        "data": [],
+        "total_scraped": 0
+    }
     if include_diag:
         body["diagnostics"] = dict(LAST_DIAG)
-    return jsonify(body), 504
+    return body
 
 
 def safe_int(value, default=0):
     try:
         return int(value) if value is not None else default
+    except (ValueError, TypeError):
+        return default
+
+
+def safe_float(value, default=0.0):
+    try:
+        return float(value) if value is not None else default
     except (ValueError, TypeError):
         return default
 
@@ -107,24 +114,6 @@ def extract_hashtags_regex(text):
     return list(set([normalize_hashtag(h) for h in hashtags if h]))
 
 
-def extract_challenges(challenges_data):
-    if not challenges_data:
-        return []
-    challenges = []
-    for ch in challenges_data:
-        title = safe_str(ch.get('title', ''))
-        desc = safe_str(ch.get('desc', ''))
-        challenges.append({
-            'id': safe_str(ch.get('id', '')),
-            'title': title,
-            'title_clean': normalize_hashtag(title),
-            'desc': desc,
-            'desc_clean': clean_text(desc),
-            'cover': validate_url(ch.get('coverLarger', ''))
-        })
-    return challenges
-
-
 def calculate_freshness(create_time_unix):
     if not create_time_unix:
         return None
@@ -133,17 +122,14 @@ def calculate_freshness(create_time_unix):
     return round(diff_seconds / 86400, 2)
 
 
-def calculate_engagement_rate(stats):
-    likes = safe_int(stats.get('diggCount', 0))
-    comments = safe_int(stats.get('commentCount', 0))
-    shares = safe_int(stats.get('shareCount', 0))
-    plays = safe_int(stats.get('playCount', 0))
-
-    if plays == 0:
+def calculate_engagement_rate(stats, interaction_keys=("diggCount", "commentCount", "shareCount"),
+                              view_key="playCount"):
+    """Engagement rate (%) = jumlah interaksi / views. Key bisa disesuaikan per platform."""
+    views = safe_int(stats.get(view_key, 0))
+    if views == 0:
         return 0.0
-
-    engagement = likes + comments + shares
-    return round((engagement / plays) * 100, 2)
+    engagement = sum(safe_int(stats.get(key, 0)) for key in interaction_keys)
+    return round((engagement / views) * 100, 2)
 
 
 def find_mentions(text):

@@ -1,6 +1,12 @@
-def get_active_account(db_config):
-    raise NotImplementedError("Salin implementasi get_active_account dari project asal")
+"""Kontrak sumber data (implementasi disediakan aplikasi, mis. MySQL/Postgres)."""
+from typing import List, Optional, Protocol
 
 
-def get_all_keywords_by_group(db_config, id_topic):
-    raise NotImplementedError("Salin implementasi get_all_keywords_by_group dari project asal")
+class KeywordSource(Protocol):
+    def get_all_keywords_by_group(self, id_topic) -> List[str]:
+        ...
+
+
+class AccountSource(Protocol):
+    def get_active_account(self) -> Optional[dict]:
+        ...
