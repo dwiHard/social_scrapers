@@ -4,7 +4,7 @@ import importlib
 import threading
 from contextlib import asynccontextmanager
 
-from ..config import CDPConfig, get_default_config
+from ..config import get_default_config
 from ..errors import BrowserBusy
 from ..logs import get_logger
 from .state import LAST_DIAG

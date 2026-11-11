@@ -19,7 +19,7 @@ class Endpoint:
     url: template 'https://site/search?q={keyword}' (nilai otomatis di-URL-encode)
          atau callable(**params) -> url.
     api_match: potongan URL API (str), regex, atau callable(url) -> bool.
-    parser: callable(api_json) -> list[dict] (mis. FieldMapper).
+    parser: callable(api_json) -> list[dict] (mis. FieldMapper) atau nama mapper terdaftar.
     key: nama field / callable untuk de-duplikasi.
     params: nama parameter wajib; defaults: nilai bawaan; normalize/validate: hook parameter.
     end: callable(api_json) -> bool penanda data habis; scroll/prepare: hook halaman.
@@ -29,7 +29,7 @@ class Endpoint:
     name: str
     url: Union[str, Callable[..., str]]
     api_match: Any
-    parser: Callable[[Any], list]
+    parser: Union[str, Callable[[Any], list]]
     key: Union[str, Callable] = "id"
     params: Tuple[str, ...] = ()
     defaults: Dict[str, Any] = field(default_factory=dict)

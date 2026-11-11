@@ -1,4 +1,4 @@
-# CDP Scraper Provider
+# Browser Execution Observer
 
 Library *core* untuk ekstraksi data lewat browser Chrome (CDP). Satu mesin yang sama dipakai untuk
 banyak sosial media: platform baru cukup **dideskripsikan** (URL, pola API, mapping field), tanpa
@@ -7,15 +7,27 @@ menulis ulang sesi browser, scroll, capture, maupun parser.
 ## Instalasi
 
 ```bash
-pip install git+https://github.com/dwihard/social_scrapers.git@v0.2.0
-# opsional: pip install "cdp_scraper[kafka]"  /  "cdp_scraper[patchright]"
+pip install beo-mcdp
+# opsional: pip install "beo-mcdp[kafka]"  /  "beo-mcdp[patchright]"
 ```
 
-## Cara kerja
+## ⚙️ Cara Kerja (How it Works)
 
-1. Browser membuka halaman (`Endpoint.url`).
-2. Library mendengarkan response API yang dipanggil halaman (`Endpoint.api_match`).
-3. JSON-nya diubah jadi list dict oleh `parser` (biasanya `FieldMapper`), di-dedupe lewat `key`, lalu halaman di-scroll sampai `limit`/data habis.
+Library `beo-mcdp` menggunakan pendekatan **CDP (Chrome DevTools Protocol) Network Interception**. Pendekatan ini membuatnya lebih cepat, bersih, dan tangguh (*anti-break*) dibandingkan teknik *web scraping* berbasis HTML tradisional. 
+
+Berikut adalah alur kerjanya:
+
+1. **Navigasi Halaman (`Endpoint.url`)**  
+   Mesin (menggunakan Playwright atau Patchright) akan membuka URL target secara otomatis di latar belakang.
+
+2. **Intersepsi Jalur API (`Endpoint.api_match`)**  
+   Alih-alih mencari elemen visual atau membaca kode HTML di layar, library ini bertindak sebagai "penyadap" jaringan. Ia secara diam-diam memonitor lalu lintas data (*network traffic*) dan **mencegat respons API spesifik** yang cocok dengan aturan `api_match` (contoh: `/api/search/item`). Dengan ini, kita mendapatkan data JSON mentah langsung dari sumbernya sebelum halaman web sempat merendernya.
+
+3. **Parsing, Deduplikasi, dan Paginasi (Auto-Scroll)**  
+   Setelah data JSON mentah berhasil ditangkap, sistem akan melakukan tiga hal secara otomatis:
+   * **Parsing (FieldMapper):** Menyaring data JSON yang rumit dan mengekstrak intisarinya menjadi daftar *dictionary* yang rapi.
+   * **Deduplikasi Data:** Memeriksa ID unik (*key*) dari setiap *item*. Data yang terkirim berulang oleh server saat *scroll* akan otomatis dibuang.
+   * **Auto-Scroll:** Menggulir halaman ke bawah secara otomatis untuk memicu server memuat data baru. Proses siklus ini terus berjalan sampai target jumlah data (`limit`) terpenuhi atau data di server sudah habis.
 
 ## Menambah platform baru
 

@@ -1,8 +1,11 @@
 """Resolver path untuk JSON bersarang.
 
-Sintaks: `a.b.c`, indeks `a[0].b`, semua elemen `a[].b`, filter `a[type=1].b`.
-Path berwildcard/filter selalu menghasilkan list (kosong jika tidak ada).
+Sintaks: `a.b.c`, indeks `a[0].b`, semua elemen `a[].b`, filter `a[type=1].b`
+(filter bertipe: =1 angka, =true boolean, ="1" atau =abc string).
+Path berwildcard/filter selalu menghasilkan list (kosong jika tidak ada);
+nilai None/"" pada ujung key dibuang.
 """
+import json
 import re
 
 _TOKEN_RE = re.compile(r"\[[^\]]*\]|[^.\[\]]+")
@@ -37,10 +40,22 @@ def compile_path(path):
     return compiled
 
 
+_literal_cache = {}
+
+
+def _literal(text):
+    """Teks filter -> nilai bertipe: 1 -> int, true -> bool, "1" -> str, abc -> str."""
+    if text not in _literal_cache:
+        try:
+            value = json.loads(text)
+        except ValueError:
+            value = text
+        _literal_cache[text] = value if isinstance(value, (int, float, str, bool)) or value is None else text
+    return _literal_cache[text]
+
+
 def _same(value, text):
-    if isinstance(value, bool):
-        return str(value).lower() == text.lower()
-    return str(value) == text
+    return value == _literal(text)
 
 
 def resolve(data, path):
@@ -72,7 +87,11 @@ def resolve(data, path):
         current = nxt
         if not current:
             return [] if multi else MISSING
-    return current if multi else current[0]
+    if multi:
+        if tokens and not tokens[-1].startswith("["):
+            current = [v for v in current if v is not None and v != ""]
+        return current
+    return current[0]
 
 
 def get_path(data, path, default=None):

@@ -6,9 +6,9 @@ namespace = {}
 exec((Path(__file__).parent / "cdp_scraper" / "_version.py").read_text(), namespace)
 
 setup(
-    name='cdp_scraper',
+    name='beo-mcdp',
     version=namespace["__version__"],
-    description='Core CDP Browser Automation and Utils Provider',
+    description='Browser Execution Observer CDP MCP scraper',
     long_description=(Path(__file__).parent / "README.md").read_text(encoding="utf-8"),
     long_description_content_type="text/markdown",
     author='Dwi Hardiyanto',

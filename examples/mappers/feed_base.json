@@ -1,0 +1,17 @@
+{
+  "name": "contoh.feed",
+  "items": "result.posts",
+  "where": {"kind": "video"},
+  "fields": {
+    "id": ["post_id", "str", ""],
+    "url": {"template": "https://contoh.com/@{author.handle}/{post_id}", "transform": "url"},
+    "text": ["caption", "str", ""],
+    "hashtags": "tags[].label",
+    "author": ["author.handle", "lower"],
+    "likes": ["metrics.likes", "int", 0],
+    "views": ["metrics.views", "int", 0],
+    "views_ribuan": {"path": "metrics.views", "transform": "ribuan", "default": 0},
+    "published_utc": {"path": "published", "transform": "iso_utc:%Y-%m-%dT%H:%M:%S%z", "default": ""},
+    "platform": {"const": "contoh"}
+  }
+}

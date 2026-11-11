@@ -19,6 +19,13 @@ class PathTests(unittest.TestCase):
         self.assertEqual(get_path(DATA, "a.b[k=1].v"), ["x", "z"])
         self.assertEqual(get_path(DATA, "nope[k=1].v"), [])
 
+    def test_typed_filter(self):
+        data = {"x": [{"t": 1, "v": "a"}, {"t": "1", "v": "b"}, {"t": True, "v": "c"}, {"t": "abc", "v": "d"}]}
+        self.assertEqual(get_path(data, "x[t=1].v"), ["a", "c"])
+        self.assertEqual(get_path(data, 'x[t="1"].v'), ["b"])
+        self.assertEqual(get_path(data, "x[t=abc].v"), ["d"])
+        self.assertEqual(get_path({"x": [{"t": None, "v": ""}, {"t": None}]}, "x[].v"), [])
+
     def test_invalid_token(self):
         with self.assertRaises(ValueError):
             resolve(DATA, "a.b[abc]")

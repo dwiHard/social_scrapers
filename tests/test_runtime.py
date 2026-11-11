@@ -2,7 +2,7 @@ import asyncio
 import time
 import unittest
 
-from cdp_scraper import (BrowserBusy, CDPConfig, CDPSessionManager, Endpoint, F, FieldMapper,
+from cdp_scraper import (BrowserBusy, CDPConfig, CDPSessionManager, Endpoint, FieldMapper,
                          PageCrashed, Platform, RedpandaProducer, Scraper, capture, end_when_falsy,
                          get_platform, list_platforms, publish_chunks, register_platform)
 from cdp_scraper.platforms.registry import unregister_platform

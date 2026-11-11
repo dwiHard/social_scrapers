@@ -1,0 +1,10 @@
+{
+  "name": "contoh.feed_ads",
+  "extends": "contoh.feed",
+  "where": {"kind": "$exists"},
+  "fields": {
+    "kind": "kind",
+    "sponsor": {"any_of": ["sponsor.name", "sponsor.brand"], "default": ""}
+  },
+  "remove": ["views_ribuan"]
+}

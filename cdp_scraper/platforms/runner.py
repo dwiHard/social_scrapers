@@ -9,6 +9,7 @@ from ..browser.diagnostics import DebugOptions
 from ..browser.session import get_manager
 from ..config import get_default_config
 from ..errors import PageCrashed
+from ..parsing.registry import get_mapper
 from ..logs import get_logger
 from .registry import get_platform
 
@@ -80,6 +81,7 @@ class Scraper:
         cfg = self.manager.config
         lim = endpoint.resolve_limit(limit)
         diag = {"engine": f"{self.manager.engine} (connect_over_cdp)"}
+        parser = get_mapper(endpoint.parser) if isinstance(endpoint.parser, str) else endpoint.parser
         options = dict(
             max_scrolls=endpoint.resolve_scrolls(lim), max_wait=endpoint.max_wait,
             stall_limit=endpoint.stall_limit, initial_sleep=endpoint.initial_sleep,
@@ -89,7 +91,7 @@ class Scraper:
             debug=DebugOptions(cfg.debug_screenshots, cfg.debug_dir))
         options.update(endpoint.capture_options)
         result = await capture(page, endpoint.build_url(params), endpoint.api_match,
-                               endpoint.parser, endpoint.key, lim, **options)
+                               parser, endpoint.key, lim, **options)
         return ScrapeResult(label=endpoint.label_for(params), items=result.items,
                             status="success" if result.items else "no_data",
                             stopped_by=result.stopped_by, diagnostics=result.diagnostics)
