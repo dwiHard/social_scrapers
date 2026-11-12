@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="assets/logo.png" alt="Browser Execution Observer Logo" width="600" />
+  <img src="https://raw.githubusercontent.com/dwiHard/social_scrapers/main/assets/logo.png" alt="Browser Execution Observer Logo" width="600" />
   
   <br />
   
@@ -151,12 +151,3 @@ Kontrak sumber data (keyword/akun) ada di `cdp_scraper.utils.database` (`Keyword
 python -m unittest discover -s tests -t .
 ```
 Tes memakai browser palsu, jadi tidak butuh Chrome/Kafka.
-
-## Perubahan dari 0.1.x (breaking)
-
-- Konfigurasi sekarang `CDPConfig` (immutable, per platform); `setup_cdp(...)` tetap ada. Variabel modul `config.CDP_URL` dst dihapus.
-- `get_session_slots` dan `PW_ENGINE` dihapus; pakai `CDPSessionManager` / `manager.engine`.
-- `BrowserBusy` (subclass `TimeoutError`) menggantikan `TimeoutError` polos.
-- `helpers.close_login_modal(page, selectors)` kini wajib diberi selector (tidak ada lagi selector TikTok bawaan).
-- `utils`: tidak lagi mengimpor Flask; `extract_challenges` (khusus TikTok) dihapus; `calculate_engagement_rate` menerima `interaction_keys` / `view_key` (default sama dengan perilaku lama).
-- `utils.database` kini berupa Protocol; `utils.redpanda_client` tidak lagi membuat producer saat import (gunakan `cdp_scraper.messaging`).
