@@ -1,4 +1,13 @@
-# Browser Execution Observer
+<div align="center">
+  <img src="assets/logo.png" alt="Browser Execution Observer Logo" width="600" />
+  
+  <br />
+  
+  [![Python 3.8+](https://img.shields.io/badge/python-3.8%2B-blue.svg)](https://www.python.org/downloads/)
+  [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+  
+  <h1>Browser Execution Observer</h1>
+</div>
 
 Library *core* untuk ekstraksi data lewat browser Chrome (CDP). Satu mesin yang sama dipakai untuk
 banyak sosial media: platform baru cukup **dideskripsikan** (URL, pola API, mapping field), tanpa

@@ -23,39 +23,63 @@ def _engagement(r):
 
 
 TWEET_FIELDS = {
+    # ---------------- Identitas Tweet ----------------
     "id": F(any_of=["rest_id", "legacy.id_str"], transform="str"),
-    "url": F(fn=lambda r: f"https://x.com/{_screen_name(r)}/status/{r.get('rest_id', '')}"),
     "text": F(any_of=["note_tweet.note_tweet_results.result.text", "legacy.full_text"],
               transform="str", default=""),
     "language": ("legacy.lang", "str", ""),
+    "created_at": F("legacy.created_at", transform="iso_utc:%a %b %d %H:%M:%S %z %Y", default=""),
+    "dateid": F("legacy.created_at", transform="date_id:%a %b %d %H:%M:%S %z %Y"),
+    "url__s": F(fn=lambda r: f"https://x.com/{_screen_name(r)}/status/{r.get('rest_id', '')}"),
+    
+    # ---------------- Metrics (Menggunakan standar nama LAMA) ----------------
+    "like__s": ("legacy.favorite_count", "int", 0),
+    "retweet_count": ("legacy.retweet_count", "int", 0),
+    "reply_count__s": ("legacy.reply_count", "int", 0),
+    "quote_count": ("legacy.quote_count", "int", 0),
+    "view_count": ("views.count", "int", 0),
+    "bookmark_count": ("legacy.bookmark_count", "int", 0),  
+    "engagement_rate": F(fn=_engagement),                    
+    
+    # ---------------- Entities & Media ----------------
     "hashtags": "legacy.entities.hashtags[].text",
-    "mentions_screen_name": "legacy.entities.user_mentions[].screen_name",
-    "mentions_user_id": F("legacy.entities.user_mentions[].id_str", transform="each:str"),
+    "mention_screen_name": "legacy.entities.user_mentions[].screen_name",
+    "mention_name": "legacy.entities.user_mentions[].name",   
     "media_urls": F(any_of=["legacy.extended_entities.media[].media_url_https",
                             "legacy.entities.media[].media_url_https"], transform="each:url"),
-    "like_count": ("legacy.favorite_count", "int", 0),
-    "retweet_count": ("legacy.retweet_count", "int", 0),
-    "reply_count": ("legacy.reply_count", "int", 0),
-    "quote_count": ("legacy.quote_count", "int", 0),
-    "bookmark_count": ("legacy.bookmark_count", "int", 0),
-    "view_count": ("views.count", "int", 0),
-    "engagement_rate": F(fn=_engagement),
-    "dateid": F("legacy.created_at", transform="date_id:%a %b %d %H:%M:%S %z %Y"),
-    "p_created_at": F("legacy.created_at", transform="iso_utc:%a %b %d %H:%M:%S %z %Y", default=""),
+
+    # ---------------- Reply, Quote, & Thread (Standar nama LAMA) ----------------
     "is_reply": F(fn=lambda r: 1 if get_path(r, "legacy.in_reply_to_status_id_str") else 0),
     "is_retweet": F(fn=lambda r: 1 if get_path(r, "legacy.retweeted_status_result") else 0),
-    "reply_to_tweet_id": ("legacy.in_reply_to_status_id_str", "str", ""),
     "conversation_id": ("legacy.conversation_id_str", "str", ""),
-    "author_id": (f"{USER}.rest_id", "str", ""),
-    "author_username": F(fn=_screen_name),
-    "author_name": F(any_of=[f"{USER}.core.name", f"{USER}.legacy.name"], transform="str", default=""),
-    "author_avatar": F(any_of=[f"{USER}.avatar.image_url", f"{USER}.legacy.profile_image_url_https"],
-                       transform="url", default=""),
-    "is_verified": F(fn=lambda r: bool(get_path(r, f"{USER}.is_blue_verified")
-                                       or get_path(r, f"{USER}.legacy.verified"))),
-    "author_follower_count": (f"{USER}.legacy.followers_count", "int", 0),
-    "author_following_count": (f"{USER}.legacy.friends_count", "int", 0),
-    "author_tweet_count": (f"{USER}.legacy.statuses_count", "int", 0),
+    "quoted_status_id_str": ("legacy.quoted_status_id_str", "str", ""),
+    "in_reply_to_screen_name": ("legacy.in_reply_to_screen_name", "str", ""),
+    "in_reply_to_status_id": ("legacy.in_reply_to_status_id_str", "str", ""),
+    "in_reply_to_user_id": ("legacy.in_reply_to_user_id_str", "str", ""),
+    
+    # ---------------- User Profile (Menggunakan standar nama LAMA) ----------------
+    "user_id": (f"{USER}.rest_id", "str", ""),
+    "user_screen_name": F(fn=_screen_name),
+    "user_name": F(any_of=[f"{USER}.core.name", f"{USER}.legacy.name"], transform="str", default=""),
+    "user_description": (f"{USER}.legacy.description", "str", ""),
+    "location": F(any_of=[f"{USER}.legacy.location", f"{USER}.location.location"], transform="str", default=""),
+    "user_profile_image_url": F(any_of=[f"{USER}.avatar.image_url", f"{USER}.legacy.profile_image_url_https"], transform="url", default=""),
+    "user_profile_banner_url": (f"{USER}.legacy.profile_banner_url", "url", ""),
+    "user_created_at": F(any_of=[f"{USER}.legacy.created_at", f"{USER}.core.created_at"], transform="iso_utc:%a %b %d %H:%M:%S %z %Y", default=""),
+    "verified__b": F(fn=lambda r: bool(get_path(r, f"{USER}.is_blue_verified") or 
+                                       get_path(r, f"{USER}.legacy.verified") or 
+                                       get_path(r, f"{USER}.verification.verified"))),
+    
+    # ---------------- User Metrics (Menggunakan standar nama LAMA) ----------------
+    "user_followers_count": (f"{USER}.legacy.followers_count", "int", 0),
+    "user_following_count": (f"{USER}.legacy.friends_count", "int", 0),
+    "user_favorites_count": (f"{USER}.legacy.favourites_count", "int", 0),
+    "user_listed_count": (f"{USER}.legacy.listed_count", "int", 0),
+    "user_fast_followers_count": (f"{USER}.legacy.fast_followers_count", "int", 0),
+    "user_normal_followers_count": (f"{USER}.legacy.normal_followers_count", "int", 0),
+    "statuses_count": (f"{USER}.legacy.statuses_count", "int", 0),
+    "media_count": (f"{USER}.legacy.media_count", "int", 0),
+    
     "posts": const(True),
 }
 
