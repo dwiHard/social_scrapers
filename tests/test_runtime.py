@@ -117,6 +117,14 @@ class ScraperTests(unittest.TestCase):
         self.assertEqual([(r.label, r.status) for r in results], [("satu", "success"), ("dua", "no_data")])
         self.assertEqual(results[0].to_dict()["results_count"], 1)
 
+    def test_attach_params_adds_param_values_to_items(self):
+        platform = self.platform("attach")
+        platform.endpoint("list").attach_params = {"media_id": "q", "sumber": "tidak_ada"}
+        scraper, _ = self.scraper([batch("a", "b", more=0)], platform=platform)
+        res = run(scraper.run("list", {"q": "M123"}))
+        self.assertEqual([(i["id"], i["media_id"], i["sumber"]) for i in res.items],
+                         [("a", "M123", None), ("b", "M123", None)])
+
     def test_login_hint_logged_and_registry(self):
         platform = self.platform("reg_demo")
         register_platform(platform)

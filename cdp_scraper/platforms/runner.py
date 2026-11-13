@@ -50,6 +50,10 @@ class Scraper:
             manager = get_manager(cfg or get_default_config())
         self.manager = manager
 
+    async def health(self, **kwargs):
+        """Status koneksi CDP milik platform ini (lihat CDPSessionManager.health)."""
+        return await self.manager.health(**kwargs)
+
     def _prepare_hook(self, endpoint):
         platform = self.platform
 
@@ -92,6 +96,9 @@ class Scraper:
         options.update(endpoint.capture_options)
         result = await capture(page, endpoint.build_url(params), endpoint.api_match,
                                parser, endpoint.key, lim, **options)
+        for item in result.items:
+            for out, name in endpoint.attach_params.items():
+                item[out] = params.get(name)
         return ScrapeResult(label=endpoint.label_for(params), items=result.items,
                             status="success" if result.items else "no_data",
                             stopped_by=result.stopped_by, diagnostics=result.diagnostics)

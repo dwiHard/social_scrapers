@@ -1,11 +1,13 @@
 """Sesi browser via CDP: satu tab per request + batas sesi bersamaan."""
 import asyncio
+import functools
 import importlib
 import threading
 from contextlib import asynccontextmanager
 
 from ..config import get_default_config
 from ..errors import BrowserBusy
+from ..health import check_cdp
 from ..logs import get_logger
 from .state import LAST_DIAG
 
@@ -46,6 +48,38 @@ class CDPSessionManager:
     @property
     def is_busy(self):
         return self._active >= self.config.max_sessions
+
+    def _sessions(self):
+        return {"active": self._active, "max": self.config.max_sessions, "busy": self.is_busy}
+
+    def health_sync(self, timeout=3.0, tabs=False):
+        """Status koneksi CDP + slot sesi (sinkron, HTTP saja; cocok untuk route Flask sync)."""
+        return {**check_cdp(self.config.cdp_url, timeout=timeout, tabs=tabs),
+                "sessions": self._sessions(), "engine": self.engine}
+
+    async def health(self, timeout=3.0, deep=False, tabs=False):
+        """Apakah sudah terhubung ke server CDP. `deep=True` sekaligus mencoba koneksi Playwright
+        sungguhan (tanpa membuka tab) untuk memastikan engine & CDP benar-benar bisa dipakai."""
+        loop = asyncio.get_running_loop()
+        report = await loop.run_in_executor(
+            None, functools.partial(self.health_sync, timeout=timeout, tabs=tabs))
+        if deep and report["connected"]:
+            report["deep"] = await self._deep_check(timeout)
+            if not report["deep"]["connected"]:
+                report["connected"], report["error"] = False, report["deep"]["error"]
+            report["engine"] = self.engine
+        return report
+
+    async def _deep_check(self, timeout):
+        try:
+            factory = self._engine_factory()
+            async with factory() as p:
+                browser = await asyncio.wait_for(p.chromium.connect_over_cdp(self.config.cdp_url), timeout)
+                return {"connected": True, "contexts": len(browser.contexts), "error": None}
+        except asyncio.TimeoutError:
+            return {"connected": False, "contexts": None, "error": f"timeout setelah {timeout:g} detik"}
+        except Exception as e:
+            return {"connected": False, "contexts": None, "error": str(e) or e.__class__.__name__}
 
     def _engine_factory(self):
         if self._factory is None:

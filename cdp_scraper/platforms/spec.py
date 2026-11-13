@@ -24,6 +24,8 @@ class Endpoint:
     params: nama parameter wajib; defaults: nilai bawaan; normalize/validate: hook parameter.
     end: callable(api_json) -> bool penanda data habis; scroll/prepare: hook halaman.
     capture_options: kwargs tambahan ke capture (poll_interval, settle, ...).
+    attach_params: {field_output: nama_param}; nilai parameter ditempel ke tiap item hasil
+    (mis. media_id yang tidak ada di response API).
     """
 
     name: str
@@ -47,6 +49,7 @@ class Endpoint:
     nav_timeout_ms: int = 60000
     label: Union[str, Callable[[dict], str], None] = None
     capture_options: Dict[str, Any] = field(default_factory=dict)
+    attach_params: Dict[str, str] = field(default_factory=dict)
 
     def _check_required(self, merged):
         missing = [p for p in self.params if merged.get(p) in (None, "", [])]

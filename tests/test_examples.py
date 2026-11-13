@@ -35,12 +35,12 @@ class TwitterExample(unittest.TestCase):
         items = tw_parser(SAMPLE)
         self.assertEqual([i["id"] for i in items], ["1", "2", "3", "4", "5", "6", "9"])
         by_id = {i["id"]: i for i in items}
-        self.assertEqual(by_id["3"]["author_username"], "wrapped")
+        self.assertEqual(by_id["3"]["user_screen_name"], "wrapped")
         self.assertEqual(by_id["4"]["text"], "teks panjang sekali")
-        self.assertEqual(by_id["5"]["author_username"], "old_legacy")
+        self.assertEqual(by_id["5"]["user_screen_name"], "old_legacy")
         self.assertEqual(by_id["6"]["is_retweet"], 1)
         self.assertEqual(by_id["1"]["media_urls"], ["https://p.example/1.jpg"])
-        self.assertEqual(by_id["1"]["p_created_at"], "2018-10-10T20:19:24Z")
+        self.assertEqual(by_id["1"]["created_at"], "2018-10-10T20:19:24Z")
         self.assertEqual(tw_parser(EMPTY), [])
 
     def test_url_and_validation(self):
