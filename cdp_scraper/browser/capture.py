@@ -40,7 +40,7 @@ async def capture(page, url, api_match, extract_fn, key_fn, limit,
                   max_scrolls=8, max_wait=8.0, stall_limit=3,
                   initial_sleep=5, scroll_fn=None, prepare_fn=None, end_fn=None,
                   nav_timeout_ms=60000, wait_until="domcontentloaded",
-                  poll_interval=0.5, settle=1.0, final_sleep=1.0,
+                  poll_interval=0.5, settle=1.0, final_sleep=1.0, body_parser=None,
                   log=None, diag=None, debug=None):
     log = log or get_logger()
     diag = {} if diag is None else diag
@@ -60,19 +60,7 @@ async def capture(page, url, api_match, extract_fn, key_fn, limit,
         state["crashed"] = True
         log.error("Tab crash terdeteksi (Target crashed).")
 
-    async def handle_resp(res):
-        if state["limit_reached"] or res.request.method == "OPTIONS":
-            return
-        if not matches(res.url):
-            return
-        if res.status != 200:
-            log.warning(f"API: {match_label} status {res.status}: {res.url[:150]}")
-            return
-        try:
-            data_json = await res.json()
-        except Exception as e:
-            log.warning(f"API: Gagal parse JSON ({match_label}): {e}")
-            return
+    def ingest(data_json):
         try:
             if isinstance(data_json, dict):
                 log.info(f"API: {match_label} keys={list(data_json.keys())[:8]}")
@@ -91,6 +79,24 @@ async def capture(page, url, api_match, extract_fn, key_fn, limit,
             log.info(f"API: Total tertangkap: {len(items)}")
         except Exception as e:
             log.warning(f"API: Gagal ekstrak data: {e}")
+
+    async def handle_resp(res):
+        if state["limit_reached"] or res.request.method == "OPTIONS":
+            return
+        if not matches(res.url):
+            return
+        if res.status != 200:
+            log.warning(f"API: {match_label} status {res.status}: {res.url[:150]}")
+            return
+        try:
+            payloads = [await res.json()] if body_parser is None else list(body_parser(await res.text()))
+        except Exception as e:
+            log.warning(f"API: Gagal parse body ({match_label}): {e}")
+            return
+        for data_json in payloads:
+            ingest(data_json)
+            if state["limit_reached"]:
+                break
 
     stopped_by = "max_scrolls"
     scrolls = 0

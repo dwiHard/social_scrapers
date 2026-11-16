@@ -27,6 +27,26 @@ class CaptureTests(unittest.TestCase):
         self.assertEqual([i["id"] for i in res.items], ["a", "b", "c"])
         self.assertEqual(res.stopped_by, "limit")
 
+    def test_body_parser_handles_non_json_bodies(self):
+        import json
+        doc = lambda *ids: json.dumps(batch(*ids))
+        bodies = ["for (;;);" + doc("a", "b"), doc("c") + "\n" + doc("d"), "bukan json sama sekali"]
+
+        def parse(text):
+            text = text.removeprefix("for (;;);") if hasattr(text, "removeprefix") else text.replace("for (;;);", "", 1)
+            return [json.loads(line) for line in text.splitlines() if line.strip()]
+
+        page = FakePage(bodies)
+        res = run(capture(page, "u", "api/list", PARSER, "id", 10,
+                          **dict(FAST, scroll_fn=scroll_emit, max_scrolls=3, stall_limit=3, body_parser=parse)))
+        self.assertEqual([i["id"] for i in res.items], ["a", "b", "c", "d"])
+
+    def test_default_loader_fails_on_prefixed_body(self):
+        import json
+        page = FakePage(["for (;;);" + json.dumps(batch("a"))])
+        res = run(capture(page, "u", "api/list", PARSER, "id", 10, **dict(FAST, max_scrolls=0)))
+        self.assertEqual(res.items, [])
+
     def test_exhausted_by_end_fn(self):
         _, res = self.go([batch("a"), batch("b", more=0)], end_fn=end_when_falsy("has_more"))
         self.assertEqual(len(res.items), 2)

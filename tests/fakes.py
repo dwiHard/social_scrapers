@@ -10,7 +10,16 @@ class FakeResponse:
         self._payload = payload
 
     async def json(self):
+        if isinstance(self._payload, str):
+            import json
+            return json.loads(self._payload)
         return self._payload
+
+    async def text(self):
+        if isinstance(self._payload, str):
+            return self._payload
+        import json
+        return json.dumps(self._payload)
 
 
 class FakePage:

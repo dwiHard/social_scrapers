@@ -268,6 +268,10 @@ atau post tanpa caption tidak lagi menggagalkan seluruh response.
 `Endpoint.attach_params={"field": "nama_param"}` menempelkan nilai parameter ke setiap item hasil; berguna untuk
 data konteks yang tidak ada di response API (seperti `media_id` di atas).
 
+Response Instagram kadang berprefix `for (;;);` atau berisi beberapa dokumen JSON, sehingga `res.json()` gagal
+(log `API: Gagal parse body`). Untuk itu tambahkan `capture_options={"body_parser": ig.parse_body}` pada `Endpoint`.
+`body_parser(text) -> list[dokumen]` bisa dipakai juga untuk situs lain dengan format body tidak standar.
+
 ## ⚓ Hook & aksi halaman
 
 `prepare` (setelah halaman terbuka) dan `scroll` (tiap putaran) adalah fungsi `async def (page)`.

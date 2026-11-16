@@ -162,6 +162,22 @@ class UserTimelineParity(unittest.TestCase):
         self.assertEqual([i["type"] for i in ig.parse_user_timeline(no_user)], ["post_data"] * 3)
 
 
+class ParseBodyTests(unittest.TestCase):
+    def test_variants(self):
+        import json
+        doc = {"data": {"a": 1}}
+        text = json.dumps(doc)
+        self.assertEqual(ig.parse_body(text), [doc])
+        self.assertEqual(ig.parse_body("for (;;);" + text), [doc])
+        self.assertEqual(ig.parse_body("  for (;;);" + text + "  \n"), [doc])
+        self.assertEqual(ig.parse_body(text + "\n" + json.dumps({"label": "x"})), [doc, {"label": "x"}])
+        self.assertEqual(ig.parse_body("sampah\n" + text + "\nsampah lagi"), [doc])
+        self.assertEqual(ig.parse_body("for (;;);" + text + "\nfor (;;);" + text), [doc, doc])
+        for bad in ("", "<html></html>", "for (;;);"):
+            with self.assertRaises(ValueError):
+                ig.parse_body(bad)
+
+
 class HelpersParity(unittest.TestCase):
     def test_timestamp_helpers(self):
         for ts in (1700000000, 1700000000123, 1.5, 0, None, "x", "1700000000", -5, 10**20):

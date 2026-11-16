@@ -6,6 +6,9 @@
   instagram.user_posts     <- bagian post parse_user_data
   instagram.user_timeline  <- parse_user_data (profil + semua post, dalam satu list)
 
+Untuk Endpoint Instagram, pakai `capture_options={"body_parser": parse_body}` agar response dengan prefix
+`for (;;);` atau berisi beberapa dokumen JSON tetap terbaca.
+
 URL GraphQL Instagram sama untuk banyak query, jadi parser ini berbasis struktur: response yang
 bukan miliknya menghasilkan list kosong. Untuk item profil yang tidak punya `id`, pakai
 `key=item_key` pada Endpoint. Perbedaan dengan parser lama: tidak ada item `{"error": ...}`
@@ -55,6 +58,35 @@ def loads_response_text(response):
     if text.startswith("for (;;);"):
         text = text[len("for (;;);"):]
     return json.loads(text)
+
+
+def parse_body(text):
+    """body_parser capture untuk Instagram: list dokumen JSON dalam satu response.
+
+    Menangani prefix 'for (;;);' dan body berisi beberapa dokumen JSON (satu per baris, mis. respons
+    bertahap). Baris yang bukan JSON dilewati; error jika tidak ada satu pun dokumen yang valid.
+    """
+    text = text.strip()
+    if text.startswith("for (;;);"):
+        text = text[len("for (;;);"):].lstrip()
+    try:
+        return [json.loads(text)]
+    except ValueError:
+        pass
+    documents = []
+    for line in text.splitlines():
+        line = line.strip()
+        if line.startswith("for (;;);"):
+            line = line[len("for (;;);"):].lstrip()
+        if not line:
+            continue
+        try:
+            documents.append(json.loads(line))
+        except ValueError:
+            continue
+    if not documents:
+        raise ValueError("body bukan JSON")
+    return documents
 
 
 def _tags(pattern, text_fn):
