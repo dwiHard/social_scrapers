@@ -16,8 +16,8 @@ def http_base(cdp_url):
     return f"{scheme}://{parts.netloc}"
 
 
-def _get_json(url, timeout):
-    with urllib.request.urlopen(urllib.request.Request(url), timeout=timeout) as response:
+def _get_json(url, timeout, headers=None):
+    with urllib.request.urlopen(urllib.request.Request(url, headers=headers or {}), timeout=timeout) as response:
         data = json.loads(response.read().decode("utf-8"))
     return data
 
@@ -42,8 +42,9 @@ def _describe(error, timeout):
     return str(error) or error.__class__.__name__
 
 
-def check_cdp(cdp_url, timeout=3.0, tabs=False):
+def check_cdp(cdp_url, timeout=3.0, tabs=False, headers=None):
     """Cek apakah server CDP menjawab (`GET /json/version`). Sinkron, tidak membuka tab.
+    headers: header HTTP tambahan, mis. {"Authorization": "Bearer ..."}.
 
     Return: {connected, cdp_url, browser, protocol_version, latency_ms, error[, tabs]}.
     """
@@ -52,14 +53,14 @@ def check_cdp(cdp_url, timeout=3.0, tabs=False):
     base = http_base(cdp_url)
     started = time.perf_counter()
     try:
-        data = _get_json(f"{base}/json/version", timeout)
+        data = _get_json(f"{base}/json/version", timeout, headers)
         if not isinstance(data, dict):
             raise ValueError("bukan objek")
         result.update(connected=True, browser=data.get("Browser"),
                       protocol_version=data.get("Protocol-Version"),
                       latency_ms=round((time.perf_counter() - started) * 1000, 1))
         if tabs:
-            pages = _get_json(f"{base}/json/list", timeout)
+            pages = _get_json(f"{base}/json/list", timeout, headers)
             result["tabs"] = len([t for t in pages if isinstance(t, dict) and t.get("type") == "page"])
     except Exception as e:
         result["connected"] = False

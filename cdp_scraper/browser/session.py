@@ -1,7 +1,6 @@
 """Sesi browser via CDP: satu tab per request + batas sesi bersamaan."""
 import asyncio
 import functools
-import importlib
 import threading
 from contextlib import asynccontextmanager
 
@@ -10,36 +9,33 @@ from ..errors import BrowserBusy
 from ..health import check_cdp
 from ..logs import get_logger
 from .state import LAST_DIAG
-
-
-def load_engine(preference="auto"):
-    names = ("patchright", "playwright") if preference == "auto" else (preference,)
-    last_error = None
-    for name in names:
-        try:
-            module = importlib.import_module(f"{name}.async_api")
-            return name, module.async_playwright
-        except ImportError as e:
-            last_error = e
-    raise ImportError(
-        f"Engine browser tidak tersedia ({'/'.join(names)}). Install: pip install playwright"
-    ) from last_error
+from .transports import auth_headers, create_transport, load_engine  # noqa: F401  (load_engine: kompatibilitas)
 
 
 class CDPSessionManager:
     """Mengelola slot sesi untuk satu konfigurasi CDP.
 
+    Cara bicara ke browser ditentukan `config.transport` (lihat `transports.py`):
+    playwright | raw | auto | transport custom.
     engine_factory: opsional, callable seperti `async_playwright` (berguna untuk test/engine custom).
+    transport: opsional, objek Transport siap pakai (menimpa config.transport).
     """
 
-    def __init__(self, config=None, log=None, engine_factory=None):
+    def __init__(self, config=None, log=None, engine_factory=None, transport=None):
         self.config = config or get_default_config()
         self.log = log or get_logger()
-        self.engine = "custom" if engine_factory else None
-        self._factory = engine_factory
+        self.transport = transport or create_transport(self.config, engine_factory)
         self._slots = threading.BoundedSemaphore(self.config.max_sessions)
         self._count_lock = threading.Lock()
         self._active = 0
+
+    @property
+    def engine(self):
+        return self.transport.engine
+
+    @property
+    def engine_label(self):
+        return self.transport.engine_label
 
     @property
     def active(self):
@@ -54,37 +50,22 @@ class CDPSessionManager:
 
     def health_sync(self, timeout=3.0, tabs=False):
         """Status koneksi CDP + slot sesi (sinkron, HTTP saja; cocok untuk route Flask sync)."""
-        return {**check_cdp(self.config.cdp_url, timeout=timeout, tabs=tabs),
+        return {**check_cdp(self.config.cdp_url, timeout=timeout, tabs=tabs,
+                            headers=auth_headers(self.config)),
                 "sessions": self._sessions(), "engine": self.engine}
 
     async def health(self, timeout=3.0, deep=False, tabs=False):
-        """Apakah sudah terhubung ke server CDP. `deep=True` sekaligus mencoba koneksi Playwright
-        sungguhan (tanpa membuka tab) untuk memastikan engine & CDP benar-benar bisa dipakai."""
+        """Apakah sudah terhubung ke server CDP. `deep=True` sekaligus mencoba koneksi sungguhan
+        lewat transport yang dipakai (tanpa membuka tab baru) untuk memastikan benar-benar bisa dipakai."""
         loop = asyncio.get_running_loop()
         report = await loop.run_in_executor(
             None, functools.partial(self.health_sync, timeout=timeout, tabs=tabs))
         if deep and report["connected"]:
-            report["deep"] = await self._deep_check(timeout)
+            report["deep"] = await self.transport.deep_check(timeout)
             if not report["deep"]["connected"]:
                 report["connected"], report["error"] = False, report["deep"]["error"]
             report["engine"] = self.engine
         return report
-
-    async def _deep_check(self, timeout):
-        try:
-            factory = self._engine_factory()
-            async with factory() as p:
-                browser = await asyncio.wait_for(p.chromium.connect_over_cdp(self.config.cdp_url), timeout)
-                return {"connected": True, "contexts": len(browser.contexts), "error": None}
-        except asyncio.TimeoutError:
-            return {"connected": False, "contexts": None, "error": f"timeout setelah {timeout:g} detik"}
-        except Exception as e:
-            return {"connected": False, "contexts": None, "error": str(e) or e.__class__.__name__}
-
-    def _engine_factory(self):
-        if self._factory is None:
-            self.engine, self._factory = load_engine(self.config.engine)
-        return self._factory
 
     async def _acquire(self, timeout=None):
         timeout = self.config.lock_timeout if timeout is None else timeout
@@ -97,53 +78,16 @@ class CDPSessionManager:
 
     @asynccontextmanager
     async def session(self, log=None):
-        """Yield page baru (tab sendiri) yang ditutup saat selesai."""
+        """Yield page baru yang ditutup saat selesai (API ala Playwright, apa pun transport-nya)."""
         log = log or self.log
-        cfg = self.config
-        factory = self._engine_factory()
         log.info("Menunggu giliran browser (lock)...")
         await self._acquire()
         with self._count_lock:
             self._active += 1
         try:
-            async with factory() as p:
-                log.info(f"Menghubungkan ke CDP di {cfg.cdp_url} ({self.engine})...")
-                LAST_DIAG["engine"] = f"{self.engine} (connect_over_cdp)"
-                browser = await p.chromium.connect_over_cdp(cfg.cdp_url)
-
-                context = browser.contexts[0] if browser.contexts else await browser.new_context()
-                page = await context.new_page()
-                if cfg.bring_to_front:
-                    await page.bring_to_front()
-
-                client = None
-                try:
-                    try:
-                        client = await context.new_cdp_session(page)
-                        await client.send("Network.enable")
-                        if cfg.timezone:
-                            try:
-                                await client.send("Emulation.setTimezoneOverride",
-                                                  {"timezoneId": cfg.timezone})
-                            except Exception as e:
-                                log.debug(f"timezone override: {e}")
-                    except Exception as e:
-                        log.warning(f"Gagal setup CDP: {e}")
-
-                    yield page
-                finally:
-                    if client is not None:
-                        try:
-                            await asyncio.wait_for(client.detach(), timeout=3.0)
-                        except Exception as e:
-                            log.debug(f"detach: {e}")
-                    try:
-                        await asyncio.wait_for(page.close(), timeout=3.0)
-                    except asyncio.TimeoutError:
-                        log.warning("Penutupan tab terlalu lama (diabaikan).")
-                    except Exception as e:
-                        log.debug(f"page.close: {e}")
-                    log.info("Sesi CDP selesai, koneksi diputus.")
+            async with self.transport.page(log) as page:
+                LAST_DIAG["engine"] = self.engine_label
+                yield page
         finally:
             with self._count_lock:
                 self._active -= 1

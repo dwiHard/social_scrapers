@@ -1,6 +1,6 @@
 import dataclasses
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Optional
 
 from . import logs
@@ -10,13 +10,29 @@ ENGINES = ("auto", "patchright", "playwright")
 
 @dataclass(frozen=True)
 class CDPConfig:
-    """Konfigurasi koneksi CDP. Immutable, bisa dibuat banyak (satu per platform)."""
+    """Konfigurasi koneksi CDP. Immutable, bisa dibuat banyak (satu per platform).
+
+    transport: 'playwright' (default) | 'raw' (CDP mentah via websocket, alias 'websocket'/'cdp')
+               | 'auto' (Playwright, jatuh ke raw bila ditolak browser) | nama transport custom.
+    engine: pilihan library untuk transport playwright ('auto' | 'patchright' | 'playwright').
+    cdp_url: 'http://host:port' (tab dicari lewat /json) atau, khusus raw,
+             'ws://host:port/devtools/page/<id>' (dipakai langsung).
+    auth_token: dikirim sebagai 'Authorization: Bearer ...' (mis. CDP_AUTH_TOKEN milik Anoa).
+    target: raw saja. 'first' = tab pertama yang ada, 'new' = buat tab baru (/json/new),
+            selain itu = id / potongan url / judul tab.
+    rewrite_ws_host: raw saja. Ganti host:port di webSocketDebuggerUrl dengan host:port cdp_url
+            (server di belakang socat/Docker sering mengembalikan 127.0.0.1:9223).
+    """
 
     cdp_url: str = "http://localhost:9222"
     timezone: Optional[str] = "Asia/Jakarta"
     lock_timeout: float = 30
     max_sessions: int = 5
     engine: str = "auto"
+    transport: str = "playwright"
+    auth_token: Optional[str] = field(default=None, repr=False)
+    target: str = "first"
+    rewrite_ws_host: bool = True
     bring_to_front: bool = True
     debug_screenshots: bool = True
     debug_dir: Optional[str] = None
@@ -28,14 +44,16 @@ class CDPConfig:
             raise ValueError("lock_timeout tidak boleh negatif")
         if self.engine not in ENGINES:
             raise ValueError(f"engine harus salah satu dari {ENGINES}")
+        if not isinstance(self.transport, str) or not self.transport:
+            raise ValueError("transport harus berupa nama (str), mis. 'playwright' atau 'raw'")
 
     def replace(self, **changes):
         return dataclasses.replace(self, **changes)
 
     @classmethod
     def from_env(cls, prefix="", environ=None):
-        """Baca CDP_URL, BROWSER_TIMEZONE, LOCK_WAIT_TIMEOUT, MAX_CONCURRENT_SESSIONS
-        (opsional dengan prefix, mis. 'TWITTER_' -> TWITTER_CDP_URL)."""
+        """Baca CDP_URL, BROWSER_TIMEZONE, LOCK_WAIT_TIMEOUT, MAX_CONCURRENT_SESSIONS, CDP_ENGINE,
+        CDP_TRANSPORT, CDP_AUTH_TOKEN, CDP_TARGET (opsional dengan prefix, mis. 'TWITTER_' -> TWITTER_CDP_URL)."""
         env = os.environ if environ is None else environ
         base = cls()
 
@@ -49,6 +67,9 @@ class CDPConfig:
             lock_timeout=pick("LOCK_WAIT_TIMEOUT", float, base.lock_timeout),
             max_sessions=pick("MAX_CONCURRENT_SESSIONS", int, base.max_sessions),
             engine=pick("CDP_ENGINE", str, base.engine),
+            transport=pick("CDP_TRANSPORT", str, base.transport),
+            auth_token=pick("CDP_AUTH_TOKEN", str, base.auth_token),
+            target=pick("CDP_TARGET", str, base.target),
         )
 
 

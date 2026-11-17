@@ -84,7 +84,7 @@ class Scraper:
     async def _run_one(self, page, endpoint, params, limit):
         cfg = self.manager.config
         lim = endpoint.resolve_limit(limit)
-        diag = {"engine": f"{self.manager.engine} (connect_over_cdp)"}
+        diag = {"engine": self.manager.engine_label}
         parser = get_mapper(endpoint.parser) if isinstance(endpoint.parser, str) else endpoint.parser
         options = dict(
             max_scrolls=endpoint.resolve_scrolls(lim), max_wait=endpoint.max_wait,

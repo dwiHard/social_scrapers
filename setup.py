@@ -13,8 +13,9 @@ setup(
     long_description_content_type="text/markdown",
     author='Dwi Hardiyanto',
     packages=find_packages(exclude=["tests", "tests.*", "examples", "examples.*"]),
-    install_requires=["playwright>=1.57.0"],
+    install_requires=[],   # playwright opsional bila memakai transport="raw"
     extras_require={
+        "playwright": ["playwright>=1.57.0"],
         "patchright": ["patchright"],
         "kafka": ["confluent-kafka"],
     },

@@ -142,6 +142,7 @@ set_default_config(CDPConfig.from_env())   # atau dari env: CDP_URL, MAX_CONCURR
 | **`no_data`** | Belum login atau terkena captcha, `api_match` tidak cocok, atau path mapping salah. Lihat log `API:`, `diagnostics`, dan screenshot `debug_last.png`. |
 | **`BrowserBusy`** | Semua slot terpakai. Naikkan `max_sessions` atau `lock_timeout`. |
 | **`cannot import name 'BrowserBusy'`** | Versi lama masih terpasang di venv. Pasang ulang dengan `pip install --force-reinstall --no-cache-dir`. |
+| **`Browser context management is not supported`** | Browser (mis. Anoa) menolak Playwright. Pakai `CDPConfig(transport="raw")` atau `"auto"` (lihat bagian *Transport*). |
 | **Hasil error** | Cari baris `[job] Error message: ...` di log. |
 
 *Contoh lengkap ada di folder `examples/` (TikTok, X, mapper custom), dan tesnya jalan dengan `python -m unittest discover -s tests -t .` tanpa butuh Chrome.*
@@ -277,6 +278,80 @@ Response Instagram kadang berprefix `for (;;);` atau berisi beberapa dokumen JSO
 `prepare` (setelah halaman terbuka) dan `scroll` (tiap putaran) adalah fungsi `async def (page)`.
 * Bawaan: `make_scroller(...)`, `make_wait_for(selector)`, `close_overlays(page, selectors)`.
 * `Endpoint.capture_options` meneruskan kwargs tambahan ke `capture` (`poll_interval`, `settle`, dst).
+
+---
+
+## 🔌 Transport: Playwright atau CDP mentah (websocket)
+
+Secara default library memakai Playwright (`connect_over_cdp`). Beberapa browser, misalnya **Anoa** (Qt WebEngine),
+CDP-nya terbatas dan menolak handshake Playwright dengan error
+`Protocol error (Browser.setDownloadBehavior): Browser context management is not supported`.
+Untuk itu tersedia transport **`raw`**: bicara CDP langsung lewat websocket ke satu tab, tanpa Playwright
+(tanpa dependensi tambahan, klien websocket-nya bawaan). API halaman yang dipakai library tetap sama,
+jadi `Scraper`, platform, preset, dan mapper tidak perlu diubah.
+
+| `transport` | Cara kerja | Kapan dipakai |
+| :--- | :--- | :--- |
+| `"playwright"` (default) | Playwright/Patchright `connect_over_cdp`, tab baru per sesi | Chrome/Chromium biasa |
+| `"raw"` (alias `"websocket"`, `"cdp"`) | CDP mentah via websocket, memakai tab yang ada | Anoa / browser dengan CDP terbatas |
+| `"auto"` | Coba Playwright, kalau ditolak atau tidak terpasang otomatis pindah ke `raw` (keputusan di-cache) | Tidak yakin browsernya apa |
+
+```python
+from cdp_scraper import CDPConfig, Platform, Scraper, set_default_config
+
+# Anoa di Docker: lewat port 9225 (socat), dari container lain / host
+set_default_config(CDPConfig(
+    cdp_url="http://localhost:9225",    # atau ws://localhost:9225/devtools/page/<id> untuk websocket langsung
+    transport="raw",
+    auth_token=None,                      # isi sama dengan CDP_AUTH_TOKEN di container bila dipakai
+    max_sessions=1,
+))
+
+# atau per platform
+Platform("twitter", endpoints=[...], cdp={"cdp_url": "http://anoa:9225", "transport": "raw"})
+
+# atau lewat env: CDP_URL, CDP_TRANSPORT, CDP_AUTH_TOKEN, CDP_TARGET (dengan prefix: TWITTER_CDP_TRANSPORT, ...)
+set_default_config(CDPConfig.from_env())
+```
+
+Opsi khusus `raw`:
+
+- `cdp_url` berbentuk `http://host:port` -> tab dicari lewat `/json`; berbentuk `ws://host:port/devtools/page/<id>` -> dipakai langsung.
+- `target`: `"first"` (default, tab pertama yang ada), `"new"` (buat tab lewat `/json/new`, ditutup saat selesai; kalau browser tidak mendukung, otomatis pakai tab yang ada), atau id / potongan URL / judul tab.
+- `rewrite_ws_host` (default `True`): mengganti `127.0.0.1:9223` di `webSocketDebuggerUrl` dengan host:port dari `cdp_url`, supaya tetap jalan di belakang socat/Docker.
+- Tab yang dipakai bersama hanya boleh dipakai **satu sesi dalam satu waktu** (sesi lain menunggu sampai `lock_timeout`, lalu `BrowserBusy`). Jadi `max_sessions` efektif 1 per tab.
+- Mengandalkan `Input.*` untuk scroll; bila browser tidak punya domain itu, scroll otomatis jatuh ke JavaScript.
+- Chrome asli hanya menerima IP atau `localhost` di Host header pada `/json`; kalau memakai Chrome (bukan Anoa) lewat nama service Docker, pakai IP-nya.
+
+Transport sendiri bisa ditambah:
+
+```python
+from cdp_scraper import RawCDPTransport, register_transport
+
+class MyTransport(RawCDPTransport):
+    ...                                   # override page(log) / deep_check(timeout)
+
+register_transport("mine", lambda config: MyTransport(config))
+CDPConfig(transport="mine")
+```
+
+Pemakaian langsung tanpa `Scraper` (setara kode `Page` mentah sebelumnya):
+
+```python
+import asyncio
+from cdp_scraper import CDPConfig, CDPSessionManager
+
+async def main():
+    manager = CDPSessionManager(CDPConfig(cdp_url="http://anoa:9225", transport="raw"))
+    async with manager.session() as page:
+        await page.goto("https://example.com")
+        print(await page.title())
+        await page.screenshot("example.png")
+
+asyncio.run(main())
+```
+
+`health(deep=True)` ikut memakai transport yang dipilih, dan `diagnostics["engine"]` berisi `raw-cdp (websocket)` atau `playwright (connect_over_cdp)`.
 
 ---
 
