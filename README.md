@@ -336,6 +336,14 @@ Library hanya memakai logger `cdp_scraper` (tanpa handler). Aktifkan dengan `set
 
 ---
 
+
+### Ringkasan jaringan di `diagnostics`
+
+Setiap scraping mengisi `diagnostics["network"]`: `seen` (request XHR/fetch yang terlihat), `matched` (yang cocok `api_match`),
+`bad_status`, `parse_errors`, dan `requests` (40 pertama: method, status, tipe, matched, URL), plus `diagnostics["scrolls"]`.
+Ini cara tercepat membedakan "URL tidak cocok" (`matched: 0`) dari "body tidak terbaca" (`parse_errors > 0`) dan
+"parser tidak menemukan data" (`matched > 0`, hasil kosong). `capture_options={"trace": True}` mencatat tiap request ke log.
+
 ## 🐘 Kafka / Redpanda
 
 ```python

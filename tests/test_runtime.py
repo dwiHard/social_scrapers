@@ -47,6 +47,30 @@ class CaptureTests(unittest.TestCase):
         res = run(capture(page, "u", "api/list", PARSER, "id", 10, **dict(FAST, max_scrolls=0)))
         self.assertEqual(res.items, [])
 
+    def test_network_summary_in_diagnostics(self):
+        import json
+        from tests.fakes import FakeResponse
+
+        async def scroll_with_noise(page):
+            for url, rtype in (("https://site.test/api/other", "fetch"), ("https://site.test/logo.png", "image")):
+                res = FakeResponse(url, {"x": 1})
+                res.request.resource_type = rtype
+                for h in page.handlers["response"]:
+                    await h(res)
+            await page.emit_next()
+
+        page = FakePage(["for (;;);bukan-json", batch("a")])
+        res = run(capture(page, "u", "api/list", PARSER, "id", 10,
+                          **dict(FAST, scroll_fn=scroll_with_noise, max_scrolls=1, stall_limit=1,
+                                 body_parser=lambda text: [json.loads(text)])))
+        net = res.diagnostics["network"]
+        self.assertEqual((net["matched"], net["parse_errors"], net["bad_status"]), (2, 1, 0))
+        self.assertEqual(net["seen"], 3)
+        self.assertEqual([(r["matched"], r["type"]) for r in net["requests"]], [(True, ""), (False, "fetch"), (True, "")])
+        self.assertTrue(net["requests"][1]["url"].endswith("/api/other"))
+        self.assertEqual(res.diagnostics["scrolls"], 1)
+        self.assertEqual([i["id"] for i in res.items], ["a"])
+
     def test_exhausted_by_end_fn(self):
         _, res = self.go([batch("a"), batch("b", more=0)], end_fn=end_when_falsy("has_more"))
         self.assertEqual(len(res.items), 2)

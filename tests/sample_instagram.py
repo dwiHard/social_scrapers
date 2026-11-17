@@ -58,3 +58,9 @@ def post(i, carousel=True, **extra):
 
 
 USER = {"data": {USER_KEY: {"edges": [{"node": post(1)}, {"node": post(2, carousel=False)}, {"node": post(3)}]}}}
+
+
+def rest_comments(count=3, has_more=True, start=1):
+    """Bentuk REST /api/v1/media/<id>/comments/."""
+    return {"comments": [comment(i) for i in range(start, start + count)], "comment_count": 1300,
+            "has_more_comments": has_more, "next_min_id": "abc" if has_more else None}

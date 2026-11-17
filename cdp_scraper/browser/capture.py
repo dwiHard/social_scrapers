@@ -40,7 +40,7 @@ async def capture(page, url, api_match, extract_fn, key_fn, limit,
                   max_scrolls=8, max_wait=8.0, stall_limit=3,
                   initial_sleep=5, scroll_fn=None, prepare_fn=None, end_fn=None,
                   nav_timeout_ms=60000, wait_until="domcontentloaded",
-                  poll_interval=0.5, settle=1.0, final_sleep=1.0, body_parser=None,
+                  poll_interval=0.5, settle=1.0, final_sleep=1.0, body_parser=None, trace=False,
                   log=None, diag=None, debug=None):
     log = log or get_logger()
     diag = {} if diag is None else diag
@@ -51,6 +51,7 @@ async def capture(page, url, api_match, extract_fn, key_fn, limit,
     items = []
     seen = set()
     state = {"limit_reached": False, "exhausted": False, "crashed": False}
+    network = {"seen": 0, "matched": 0, "bad_status": 0, "parse_errors": 0, "requests": []}
 
     def check_crash():
         if state["crashed"]:
@@ -81,16 +82,29 @@ async def capture(page, url, api_match, extract_fn, key_fn, limit,
             log.warning(f"API: Gagal ekstrak data: {e}")
 
     async def handle_resp(res):
-        if state["limit_reached"] or res.request.method == "OPTIONS":
+        method = res.request.method
+        if method == "OPTIONS":
             return
-        if not matches(res.url):
+        kind = getattr(res.request, "resource_type", "") or ""
+        is_match = bool(matches(res.url))
+        if kind in ("xhr", "fetch") or is_match:
+            network["seen"] += 1
+            if len(network["requests"]) < 40:
+                network["requests"].append({"method": method, "status": res.status, "type": kind,
+                                            "matched": is_match, "url": res.url[:140]})
+            if trace:
+                log.info(f"Trace: {method} {res.status} {kind} {res.url[:140]}")
+        if state["limit_reached"] or not is_match:
             return
+        network["matched"] += 1
         if res.status != 200:
+            network["bad_status"] += 1
             log.warning(f"API: {match_label} status {res.status}: {res.url[:150]}")
             return
         try:
             payloads = [await res.json()] if body_parser is None else list(body_parser(await res.text()))
         except Exception as e:
+            network["parse_errors"] += 1
             log.warning(f"API: Gagal parse body ({match_label}): {e}")
             return
         for data_json in payloads:
@@ -182,6 +196,8 @@ async def capture(page, url, api_match, extract_fn, key_fn, limit,
             await page_diag(page, None, "stalled", diag=diag, log=log)
             await save_debug_shot(page, "debug_stalled.png", debug=debug, log=log)
     finally:
+        diag["network"] = network
+        diag["scrolls"] = scrolls
         try:
             page.remove_listener("response", handle_resp)
             page.remove_listener("crash", on_crash)

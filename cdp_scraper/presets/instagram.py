@@ -1,7 +1,8 @@
 """Preset mapping Instagram (GraphQL), setara MediaParser lama. Terdaftar sebagai:
 
   instagram.search         <- parse_media_data          (Top SERP)
-  instagram.comments       <- parse_media_data_comment  (media_id ditempel lewat Endpoint.attach_params)
+  instagram.comments       <- parse_media_data_comment  (media_id ditempel lewat Endpoint.attach_params);
+                              juga membaca bentuk REST /api/v1/media/<id>/comments/ (api_match=COMMENTS_API_MATCH)
   instagram.user_profile   <- bagian profil parse_user_data
   instagram.user_posts     <- bagian post parse_user_data
   instagram.user_timeline  <- parse_user_data (profil + semua post, dalam satu list)
@@ -20,6 +21,7 @@ from datetime import datetime, timezone
 
 from ..parsing import F, FieldMapper, const, get_path, register_mapper
 
+COMMENTS_API_MATCH = re.compile(r"graphql|/media/\d+/comments")
 HASHTAG_RE = re.compile(r"#(\w+)")
 MENTION_RE = re.compile(r"@(\w+)")
 SEARCH_EDGES = "data.xdt_fbsearch__top_serp_graphql.edges"
@@ -183,15 +185,25 @@ def comments_page_info(data):
 
 
 def comments_exhausted(data):
-    """end_fn komentar: True hanya jika response memuat koneksi komentar dan tidak ada halaman lagi."""
+    """end_fn komentar: True hanya jika response memuat daftar komentar dan tidak ada halaman lagi.
+
+    Mengenali dua bentuk: koneksi GraphQL (`page_info.has_next_page`) dan REST `/api/v1/media/<id>/comments/`
+    (`has_more_comments`)."""
+    if isinstance(data, dict) and isinstance(data.get("comments"), list) and "has_more_comments" in data:
+        return not data["has_more_comments"]
     conn = _connection(data)
     return bool(conn) and not (conn.get("page_info") or {}).get("has_next_page", False)
 
 
 def _comment_nodes(data):
     conn = _connection(data)
-    for edge in (conn or {}).get("edges", []):
-        yield ((edge.get("node", {}) or {}) if isinstance(edge, dict) else {})
+    if conn:
+        for edge in conn.get("edges", []):
+            yield ((edge.get("node", {}) or {}) if isinstance(edge, dict) else {})
+    elif isinstance(data, dict) and isinstance(data.get("comments"), list):
+        for comment in data["comments"]:
+            if isinstance(comment, dict):
+                yield comment
 
 
 COMMENT_FIELDS = {

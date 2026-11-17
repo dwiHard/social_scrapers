@@ -131,6 +131,33 @@ class CommentsParity(unittest.TestCase):
                 clean=lambda items: [c for c in items if c != BLANK_COMMENT])
 
 
+class RestCommentsTests(unittest.TestCase):
+    def test_rest_payload_gives_same_records_as_graphql_shape(self):
+        expected, _ = quiet(Legacy.parse_media_data_comment, S.comments_payload(3), None)
+        self.assertEqual(ig.comments_mapper(S.rest_comments(3)), expected)
+
+    def test_exhausted_flags_for_rest(self):
+        self.assertFalse(ig.comments_exhausted(S.rest_comments(2, has_more=True)))
+        self.assertTrue(ig.comments_exhausted(S.rest_comments(2, has_more=False)))
+        self.assertFalse(ig.comments_exhausted({"comments": []}))
+        self.assertFalse(ig.comments_exhausted({"comments": "bukan list", "has_more_comments": True}))
+
+    def test_graphql_behaviour_unchanged_and_unrelated_ignored(self):
+        self.assertTrue(ig.comments_exhausted(S.comments_payload(1, has_next=False)))
+        self.assertFalse(ig.comments_exhausted(S.comments_payload(1, has_next=True)))
+        for unrelated in ({}, {"data": {"x": 1}}, None, [], {"status": "ok"}):
+            self.assertFalse(ig.comments_exhausted(unrelated))
+            self.assertEqual(ig.comments_mapper(unrelated), [])
+
+    def test_api_match_covers_graphql_and_rest_only(self):
+        for url in ("https://www.instagram.com/graphql/query", "https://www.instagram.com/api/graphql",
+                    "https://www.instagram.com/api/v1/media/3081573788433385479/comments/?can_support_threading=true"):
+            self.assertTrue(ig.COMMENTS_API_MATCH.search(url), url)
+        for url in ("https://www.instagram.com/api/v1/feed/timeline/", "https://www.instagram.com/api/v1/media/123/info/",
+                    "https://static.cdninstagram.com/rsrc.php/abc.js"):
+            self.assertFalse(ig.COMMENTS_API_MATCH.search(url), url)
+
+
 class UserTimelineParity(unittest.TestCase):
     def test_sample(self):
         expected = quiet(Legacy.parse_user_data, S.USER)

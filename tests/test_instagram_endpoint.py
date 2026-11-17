@@ -47,6 +47,39 @@ class InstagramEndpointTests(unittest.TestCase):
         self.assertEqual(res.stopped_by, "exhausted")
         self.assertEqual(res.items[0]["c_created_at"], "2023-11-14T22:13:21Z")
 
+    def test_comments_over_rest_endpoint_with_api_match_regex(self):
+        rest_url = "https://www.instagram.com/api/v1/media/3081573788433385479/comments/?can_support_threading=true"
+
+        class RestCtx(FakeContext):
+            async def new_page(self):
+                page = FakePage(self.batches, api_url=rest_url)
+                self.pages_made.append(page)
+                return page
+
+        plat = platform()
+        plat.endpoint("comments").api_match = ig.COMMENTS_API_MATCH
+        batches = [S.rest_comments(3, has_more=True), S.rest_comments(2, has_more=False, start=4)]
+        manager = CDPSessionManager(CDPConfig(), engine_factory=fake_engine(RestCtx(batches)))
+        res = run(Scraper(plat, manager=manager).run("comments", {"code": "ABC", "media_id": "M7"}, limit=50))
+        self.assertEqual([c["id"] for c in res.items], ["c1", "c2", "c3", "c4", "c5"])
+        self.assertEqual({c["media_id"] for c in res.items}, {"M7"})
+        self.assertEqual(res.stopped_by, "exhausted")
+
+    def test_diagnostics_explain_why_nothing_was_captured(self):
+        other = "https://www.instagram.com/api/v1/media/999/comments/?x=1"
+
+        class OtherCtx(FakeContext):
+            async def new_page(self):
+                page = FakePage(self.batches, api_url=other)
+                self.pages_made.append(page)
+                return page
+
+        manager = CDPSessionManager(CDPConfig(), engine_factory=fake_engine(OtherCtx([S.rest_comments(2)])))
+        res = run(Scraper(platform(), manager=manager).run("comments", {"code": "ABC", "media_id": "M7"}, limit=5))
+        self.assertEqual((res.status, res.count), ("no_data", 0))
+        net = res.diagnostics["network"]
+        self.assertEqual((net["matched"], net["parse_errors"]), (0, 0))
+
     def test_user_timeline_keeps_profile_item_once(self):
         res = run(scraper([S.USER, S.USER]).run("user", {"username": "dina"}, limit=50))
         self.assertEqual([ig.item_key(i) for i in res.items], ["dina", "p1", "p2", "p3"])
