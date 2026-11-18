@@ -1,3 +1,6 @@
+import json
+
+
 def media(i, **extra):
     record = {
         "pk": str(i), "code": f"C{i}", "taken_at": 1700000000 + i, "comment_count": 3, "like_count": 10,
@@ -64,3 +67,25 @@ def rest_comments(count=3, has_more=True, start=1):
     """Bentuk REST /api/v1/media/<id>/comments/."""
     return {"comments": [comment(i) for i in range(start, start + count)], "comment_count": 1300,
             "has_more_comments": has_more, "next_min_id": "abc" if has_more else None}
+
+
+COMMENTS_KEY = "xdt_api__v1__media__media_id__comments__connection"
+UNRELATED = {"data": {"xdt_api__v1__web__suggested__connection": {
+    "edges": [{"node": {"id": "s1", "username": "orang_lain"}}], "page_info": {"has_next_page": False}}}}
+EMPTY_CONNECTION = {"data": {"xdt_x__connection": {"edges": [], "page_info": {"has_next_page": False}}}}
+
+
+def comments_page(ids, has_next):
+    return {"data": {COMMENTS_KEY: {"edges": [{"node": comment(i)} for i in ids],
+                                    "page_info": {"has_next_page": has_next, "end_cursor": "abc" if has_next else None}}}}
+
+
+def post_html(count=3, has_next=True, extra_json=None):
+    """Dokumen HTML halaman post dengan komentar halaman pertama tertanam (seperti respons /p/<kode>/)."""
+    sjs = {"require": [["ScheduledServerJS", "handle", None, [{"__bbox": {"require": [[
+        "RelayPrefetchedStreamCache", "next", [], ["adp_PolarisPostCommentsContainerQuery",
+                                                  {"__bbox": {"complete": True, "result": comments_page(range(1, count + 1), has_next)}}]]]}}]]]}
+    blobs = [json.dumps(UNRELATED), json.dumps(sjs)] + [json.dumps(x) for x in (extra_json or [])]
+    scripts = "".join(f'<script type="application/json" data-sjs>{b}</script>' for b in blobs)
+    return ("<!DOCTYPE html><html><head><script>window.x = 1;</script>" + scripts +
+            '<script type="application/json">{rusak</script></head><body></body></html>')

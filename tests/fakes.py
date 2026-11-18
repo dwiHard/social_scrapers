@@ -45,9 +45,15 @@ class FakePage:
         self.handlers[event].remove(handler)
 
     async def emit_next(self):
-        payload = self.batches.pop(0) if self.batches else {"items": [], "has_more": 0}
-        for handler in list(self.handlers.get("response", [])):
-            await handler(FakeResponse(self.api_url, payload))
+        item = self.batches.pop(0) if self.batches else {"items": [], "has_more": 0}
+        for entry in (item if isinstance(item, list) else [item]):
+            if isinstance(entry, tuple):
+                url, payload, *rest = entry
+                status = rest[0] if rest else 200
+            else:
+                url, payload, status = self.api_url, entry, 200
+            for handler in list(self.handlers.get("response", [])):
+                await handler(FakeResponse(url, payload, status=status))
 
     async def goto(self, url, **kwargs):
         self.url = url

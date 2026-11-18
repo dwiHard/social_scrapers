@@ -8,6 +8,9 @@ from ..logs import get_logger
 from .diagnostics import DebugOptions, page_diag, save_debug_shot
 
 
+_STATIC_TYPES = ("image", "media", "font", "stylesheet")
+
+
 def compile_matcher(match):
     """api_match bisa: substring (str), regex terkompilasi, atau callable(url) -> bool."""
     if hasattr(match, "search"):
@@ -86,7 +89,7 @@ async def capture(page, url, api_match, extract_fn, key_fn, limit,
         if method == "OPTIONS":
             return
         kind = getattr(res.request, "resource_type", "") or ""
-        is_match = bool(matches(res.url))
+        is_match = bool(matches(res.url)) and kind not in _STATIC_TYPES
         if kind in ("xhr", "fetch") or is_match:
             network["seen"] += 1
             if len(network["requests"]) < 40:
@@ -95,6 +98,8 @@ async def capture(page, url, api_match, extract_fn, key_fn, limit,
             if trace:
                 log.info(f"Trace: {method} {res.status} {kind} {res.url[:140]}")
         if state["limit_reached"] or not is_match:
+            return
+        if 300 <= res.status < 400:
             return
         network["matched"] += 1
         if res.status != 200:

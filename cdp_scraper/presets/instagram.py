@@ -21,7 +21,12 @@ from datetime import datetime, timezone
 
 from ..parsing import F, FieldMapper, const, get_path, register_mapper
 
-COMMENTS_API_MATCH = re.compile(r"graphql|/media/\d+/comments")
+POST_DOCUMENT = r"instagram\.com/(?:[A-Za-z0-9._]+/)?(?:p|reels?|tv)/[A-Za-z0-9_-]+/?(?:\?|$)"
+PROFILE_DOCUMENT = r"instagram\.com/[A-Za-z0-9._]+/?(?:\?|$)"
+COMMENTS_API_MATCH = re.compile(rf"graphql|/media/\d+/comments|{POST_DOCUMENT}")
+USER_API_MATCH = re.compile(rf"graphql|{PROFILE_DOCUMENT}")
+SCRIPT_JSON_RE = re.compile(r"<script[^>]*type=[\"']application/json[\"'][^>]*>(.*?)</script>", re.S | re.I)
+EMBEDDED_KEYS = ("xdt_api__v1__feed__user_timeline_graphql_connection", "xdt_fbsearch__top_serp_graphql")
 HASHTAG_RE = re.compile(r"#(\w+)")
 MENTION_RE = re.compile(r"@(\w+)")
 SEARCH_EDGES = "data.xdt_fbsearch__top_serp_graphql.edges"
@@ -62,12 +67,47 @@ def loads_response_text(response):
     return json.loads(text)
 
 
+def _walk_keys(obj, wanted):
+    if isinstance(obj, dict):
+        for name, value in obj.items():
+            if name in wanted and isinstance(value, dict):
+                yield name, value
+            else:
+                yield from _walk_keys(value, wanted)
+    elif isinstance(obj, list):
+        for value in obj:
+            yield from _walk_keys(value, wanted)
+
+
+def embedded_payloads(html):
+    """Data yang tertanam di HTML halaman (`<script type="application/json">`), dibungkus seperti response GraphQL.
+
+    Halaman pertama komentar/post sering dikirim di dokumen HTML, bukan lewat request jaringan, sehingga tidak
+    tertangkap oleh capture response biasa."""
+    payloads = []
+    for blob in SCRIPT_JSON_RE.findall(html):
+        if "page_info" not in blob and not any(key in blob for key in EMBEDDED_KEYS):
+            continue
+        try:
+            data = json.loads(blob)
+        except ValueError:
+            continue
+        for key, value in _walk_keys(data, EMBEDDED_KEYS):
+            payloads.append({"data": {key: value}})
+        for key, conn in _walk_connections(data):
+            if _looks_like_comments(key, conn):
+                payloads.append({"data": {key or "comments_connection": conn}})
+    return payloads
+
+
 def parse_body(text):
     """body_parser capture untuk Instagram: list dokumen JSON dalam satu response.
 
-    Menangani prefix 'for (;;);' dan body berisi beberapa dokumen JSON (satu per baris, mis. respons
+    Dokumen HTML halaman (diawali '<') dibaca lewat `embedded_payloads`. Menangani prefix 'for (;;);' dan body berisi beberapa dokumen JSON (satu per baris, mis. respons
     bertahap). Baris yang bukan JSON dilewati; error jika tidak ada satu pun dokumen yang valid.
     """
+    if text.lstrip()[:1] == "<":
+        return embedded_payloads(text)
     text = text.strip()
     if text.startswith("for (;;);"):
         text = text[len("for (;;);"):].lstrip()
@@ -155,24 +195,39 @@ search_mapper = FieldMapper(
     fields=SEARCH_FIELDS, name="instagram.search")
 
 
-def _find_connection(obj):
+def _walk_connections(obj, key=None):
+    """Hasilkan (nama_key, koneksi) untuk tiap dict yang punya `edges` (list) dan `page_info`."""
     if isinstance(obj, dict):
         if isinstance(obj.get("edges"), list) and "page_info" in obj:
-            return obj
-        for value in obj.values():
-            found = _find_connection(value)
-            if found:
-                return found
+            yield key, obj
+            return
+        for name, value in obj.items():
+            yield from _walk_connections(value, name)
     elif isinstance(obj, list):
         for value in obj:
-            found = _find_connection(value)
-            if found:
-                return found
+            yield from _walk_connections(value, key)
+
+
+def _looks_like_comments(key, conn):
+    """Koneksi komentar: nama key memuat 'comment', atau node-nya berbentuk komentar (punya `text` dan `user`/`pk`)."""
+    if "comment" in (key or "").lower():
+        return True
+    for edge in conn["edges"][:3]:
+        node = edge.get("node") if isinstance(edge, dict) else None
+        if isinstance(node, dict) and "text" in node and ("user" in node or "pk" in node):
+            return True
+    return False
+
+
+def _find_comment_connection(obj):
+    for key, conn in _walk_connections(obj):
+        if _looks_like_comments(key, conn):
+            return conn
     return None
 
 
 def _connection(data):
-    return _find_connection(data.get("data", data)) if isinstance(data, dict) else None
+    return _find_comment_connection(data.get("data", data)) if isinstance(data, dict) else None
 
 
 def comments_page_info(data):
@@ -185,14 +240,14 @@ def comments_page_info(data):
 
 
 def comments_exhausted(data):
-    """end_fn komentar: True hanya jika response memuat daftar komentar dan tidak ada halaman lagi.
+    """end_fn komentar: True hanya jika response memuat komentar (bukan koneksi lain) dan tidak ada halaman lagi.
 
     Mengenali dua bentuk: koneksi GraphQL (`page_info.has_next_page`) dan REST `/api/v1/media/<id>/comments/`
     (`has_more_comments`)."""
     if isinstance(data, dict) and isinstance(data.get("comments"), list) and "has_more_comments" in data:
         return not data["has_more_comments"]
     conn = _connection(data)
-    return bool(conn) and not (conn.get("page_info") or {}).get("has_next_page", False)
+    return bool(conn) and bool(conn.get("edges")) and not (conn.get("page_info") or {}).get("has_next_page", False)
 
 
 def _comment_nodes(data):

@@ -158,6 +158,65 @@ class RestCommentsTests(unittest.TestCase):
             self.assertFalse(ig.COMMENTS_API_MATCH.search(url), url)
 
 
+class StrictCommentDetectionTests(unittest.TestCase):
+    """Koneksi lain di halaman post (saran akun, dll) tidak boleh dianggap komentar maupun penanda 'habis'."""
+
+    def test_unrelated_connections_are_ignored(self):
+        for payload in (S.UNRELATED, S.EMPTY_CONNECTION):
+            self.assertEqual(ig.comments_mapper(payload), [])
+            self.assertFalse(ig.comments_exhausted(payload))
+        legacy_garbage = quiet(Legacy.parse_media_data_comment, S.UNRELATED, None)[0]
+        self.assertEqual([c["id"] for c in legacy_garbage], ["s1"])   # parser lama menganggapnya komentar
+
+    def test_exhausted_needs_comments_with_edges(self):
+        self.assertFalse(ig.comments_exhausted(S.comments_page([], False)))   # kosong: belum pasti habis
+        self.assertTrue(ig.comments_exhausted(S.comments_page([1], False)))
+        self.assertFalse(ig.comments_exhausted(S.comments_page([1], True)))
+
+    def test_shape_heuristic_when_key_name_is_unknown(self):
+        payload = {"data": {"nama_tak_dikenal": {"edges": [{"node": S.comment(1)}], "page_info": {"has_next_page": False}}}}
+        self.assertEqual([c["id"] for c in ig.comments_mapper(payload)], ["c1"])
+        self.assertTrue(ig.comments_exhausted(payload))
+
+    def test_picks_the_comment_connection_among_several(self):
+        payload = {"data": {**S.UNRELATED["data"], **S.comments_page([1, 2], True)["data"], **S.EMPTY_CONNECTION["data"]}}
+        self.assertEqual([c["id"] for c in ig.comments_mapper(payload)], ["c1", "c2"])
+        self.assertFalse(ig.comments_exhausted(payload))
+
+
+class EmbeddedDataTests(unittest.TestCase):
+    def test_comments_embedded_in_html(self):
+        html = S.post_html(count=3, has_next=True)
+        payloads = ig.parse_body(html)
+        self.assertEqual(len(payloads), 1)
+        self.assertEqual([c["id"] for c in ig.comments_mapper(payloads[0])], ["c1", "c2", "c3"])
+        self.assertFalse(ig.comments_exhausted(payloads[0]))
+        self.assertTrue(ig.comments_exhausted(ig.parse_body(S.post_html(count=2, has_next=False))[0]))
+
+    def test_user_timeline_embedded_in_html(self):
+        html = S.post_html(extra_json=[S.USER["data"]])   # dibungkus lagi agar bersarang di dalam JSON lain
+        html = html.replace("</head>", '<script type="application/json">' + __import__("json").dumps({"deep": [S.USER["data"]]}) + "</script></head>")
+        payloads = [p for p in ig.embedded_payloads(html) if S.USER_KEY in p["data"]]
+        self.assertGreaterEqual(len(payloads), 1)
+        self.assertEqual([i["type"] for i in ig.parse_user_timeline(payloads[0])], ["user_profile"] + ["post_data"] * 3)
+
+    def test_no_embedded_data_and_broken_scripts(self):
+        for html in ("<html><body>kosong</body></html>", '<script type="application/json">{rusak page_info</script>',
+                     "<script>var page_info = 1;</script>"):
+            self.assertEqual(ig.embedded_payloads(html), [], html)
+
+    def test_document_url_patterns(self):
+        for url in ("https://www.instagram.com/p/DfxPv2GS3az/", "https://www.instagram.com/p/DfxPv2GS3az",
+                    "https://www.instagram.com/reel/DfxPv2GS3az/?igsh=x", "https://www.instagram.com/natgeo/p/DfxPv2GS3az/"):
+            self.assertTrue(ig.COMMENTS_API_MATCH.search(url), url)
+        for url in ("https://www.instagram.com/p/DfxPv2GS3az/media/?size=m", "https://www.instagram.com/ajax/bz?a=1",
+                    "https://static.cdninstagram.com/btmanifest/1054856395/instagram/main"):
+            self.assertFalse(ig.COMMENTS_API_MATCH.search(url), url)
+        for url in ("https://www.instagram.com/natgeo/", "https://www.instagram.com/natgeo", "https://www.instagram.com/api/graphql"):
+            self.assertTrue(ig.USER_API_MATCH.search(url), url)
+        self.assertFalse(ig.USER_API_MATCH.search("https://www.instagram.com/"))
+
+
 class UserTimelineParity(unittest.TestCase):
     def test_sample(self):
         expected = quiet(Legacy.parse_user_data, S.USER)
@@ -200,9 +259,10 @@ class ParseBodyTests(unittest.TestCase):
         self.assertEqual(ig.parse_body(text + "\n" + json.dumps({"label": "x"})), [doc, {"label": "x"}])
         self.assertEqual(ig.parse_body("sampah\n" + text + "\nsampah lagi"), [doc])
         self.assertEqual(ig.parse_body("for (;;);" + text + "\nfor (;;);" + text), [doc, doc])
-        for bad in ("", "<html></html>", "for (;;);"):
+        for bad in ("", "for (;;);", "bukan json sama sekali"):
             with self.assertRaises(ValueError):
                 ig.parse_body(bad)
+        self.assertEqual(ig.parse_body("<html></html>"), [])   # halaman HTML tanpa data tertanam: bukan error
 
 
 class HelpersParity(unittest.TestCase):

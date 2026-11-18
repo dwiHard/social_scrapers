@@ -71,6 +71,22 @@ class CaptureTests(unittest.TestCase):
         self.assertEqual(res.diagnostics["scrolls"], 1)
         self.assertEqual([i["id"] for i in res.items], ["a"])
 
+    def test_redirects_and_static_resources_are_not_treated_as_api(self):
+        from tests.fakes import FakeResponse
+
+        async def scroll_static(page):
+            res = FakeResponse("https://site.test/api/list/logo.png", b"\x89PNG")
+            res.request.resource_type = "image"
+            for h in page.handlers["response"]:
+                await h(res)
+
+        page = FakePage([("https://site.test/api/list", "", 301)])
+        res = run(capture(page, "u", "api/list", PARSER, "id", 10,
+                          **dict(FAST, scroll_fn=scroll_static, max_scrolls=1, stall_limit=1)))
+        net = res.diagnostics["network"]
+        self.assertEqual((net["matched"], net["bad_status"], net["parse_errors"]), (0, 0, 0))
+        self.assertEqual(res.items, [])
+
     def test_exhausted_by_end_fn(self):
         _, res = self.go([batch("a"), batch("b", more=0)], end_fn=end_when_falsy("has_more"))
         self.assertEqual(len(res.items), 2)
