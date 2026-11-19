@@ -320,6 +320,7 @@ Opsi khusus `raw`:
 - `target`: `"first"` (default, tab pertama yang ada), `"new"` (buat tab lewat `/json/new`, ditutup saat selesai; kalau browser tidak mendukung, otomatis pakai tab yang ada), atau id / potongan URL / judul tab.
 - `rewrite_ws_host` (default `True`): mengganti `127.0.0.1:9223` di `webSocketDebuggerUrl` dengan host:port dari `cdp_url`, supaya tetap jalan di belakang socat/Docker.
 - Tab yang dipakai bersama hanya boleh dipakai **satu sesi dalam satu waktu** (sesi lain menunggu sampai `lock_timeout`, lalu `BrowserBusy`). Jadi `max_sessions` efektif 1 per tab.
+- API halaman yang tersedia di `raw`: `goto`, `evaluate`, `title`, `url`, `inner_text`, `wait_for_selector`, `screenshot`, `click`, `fill`, `content`, `reload`, `keyboard`/`mouse` dan `locator(css)` (`first`/`last`/`nth`, `count`, `bounding_box`, `scroll_into_view_if_needed`, `click(force=)`, `dispatch_event`, `fill`, `inner_text`, `text_content`, `get_attribute`, `is_visible`, `wait_for`, `evaluate`). `locator` hanya untuk selector CSS (termasuk `:has()`); selector Playwright seperti `text=` atau `:has-text()` tidak didukung. API lain (mis. `expect_response`) memunculkan error yang menjelaskan hal itu.
 - Mengandalkan `Input.*` untuk scroll; bila browser tidak punya domain itu, scroll otomatis jatuh ke JavaScript.
 - Chrome asli hanya menerima IP atau `localhost` di Host header pada `/json`; kalau memakai Chrome (bukan Anoa) lewat nama service Docker, pakai IP-nya.
 

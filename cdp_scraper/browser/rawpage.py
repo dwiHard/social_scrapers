@@ -185,6 +185,14 @@ class _Mouse:
         except CDPProtocolError:
             pass
 
+    async def click(self, x, y):
+        self._pos = (x, y)
+        conn = self._page.conn
+        await conn.send("Input.dispatchMouseEvent", {"type": "mouseMoved", "x": x, "y": y})
+        for kind, buttons in (("mousePressed", 1), ("mouseReleased", 0)):
+            await conn.send("Input.dispatchMouseEvent", {"type": kind, "x": x, "y": y, "button": "left",
+                                                         "buttons": buttons, "clickCount": 1})
+
     async def wheel(self, delta_x, delta_y):
         x, y = self._pos
         try:
@@ -192,6 +200,162 @@ class _Mouse:
                 "type": "mouseWheel", "x": x, "y": y, "deltaX": delta_x, "deltaY": delta_y})
         except CDPProtocolError:
             await self._page.evaluate("(d) => window.scrollBy(d[0], d[1])", [delta_x, delta_y])
+
+
+
+# ---- Locator (subset API Playwright) --------------------------------------------------------
+
+_FIND = """(a) => {
+    const [sel, idx, extra] = a;
+    const all = [...document.querySelectorAll(sel)];
+    const el = idx < 0 ? all[all.length + idx] : all[idx || 0];
+    %s
+}"""
+
+_VISIBLE_JS = "!!el && !!(el.offsetWidth || el.offsetHeight || el.getClientRects().length) && getComputedStyle(el).visibility !== 'hidden'"
+
+
+class Locator:
+    """Subset `playwright.Locator` di atas selector CSS (document.querySelectorAll).
+
+    Didukung: first / last / nth(i), count, bounding_box, scroll_into_view_if_needed, click(force=),
+    dispatch_event, fill, inner_text, text_content, get_attribute, is_visible, wait_for, evaluate.
+    Selector khusus Playwright (text=, :has-text(), role=, >>) TIDAK didukung; CSS biasa
+    (termasuk :has(), [attr*=x i]) jalan. Bila selector cocok dengan banyak elemen, aksi memakai
+    elemen pertama (Playwright strict mode akan error).
+    """
+
+    def __init__(self, page, selector, index=None):
+        self._page = page
+        self._selector = selector
+        self._index = index
+
+    def __repr__(self):
+        suffix = "" if self._index is None else f" [{self._index}]"
+        return f"<Locator {self._selector!r}{suffix}>"
+
+    @property
+    def first(self):
+        return Locator(self._page, self._selector, 0)
+
+    @property
+    def last(self):
+        return Locator(self._page, self._selector, -1)
+
+    def nth(self, index):
+        return Locator(self._page, self._selector, index)
+
+    def locator(self, selector):
+        return Locator(self._page, f"{self._selector} {selector}", self._index)
+
+    async def _run(self, body, extra=None):
+        index = 0 if self._index is None else self._index
+        return await self._page.evaluate(_FIND % body, [self._selector, index, extra])
+
+    async def count(self):
+        if self._index is not None:
+            return 1 if await self._run("return el ? 1 : 0;") else 0
+        return await self._page.evaluate("(s) => document.querySelectorAll(s).length", self._selector)
+
+    async def _wait_el(self, timeout, visible=False):
+        deadline = time.monotonic() + (timeout or 0) / 1000
+        while True:
+            if await self._run(f"return {_VISIBLE_JS if visible else '!!el'};"):
+                return
+            if timeout is not None and time.monotonic() > deadline:
+                state = "terlihat" if visible else "ada"
+                raise TimeoutError(f"Locator {self._selector!r} tidak {state} dalam {timeout}ms")
+            await asyncio.sleep(0.1)
+
+    async def wait_for(self, state="visible", timeout=30000):
+        if state in ("visible", "attached"):
+            return await self._wait_el(timeout, visible=state == "visible")
+        deadline = time.monotonic() + timeout / 1000
+        want_hidden = state == "hidden"
+        while True:
+            hidden = not await self._run(f"return {_VISIBLE_JS};") if want_hidden else not await self._run("return !!el;")
+            if hidden:
+                return
+            if time.monotonic() > deadline:
+                raise TimeoutError(f"Locator {self._selector!r} belum {state} dalam {timeout}ms")
+            await asyncio.sleep(0.1)
+
+    async def is_visible(self):
+        return bool(await self._run(f"return {_VISIBLE_JS};"))
+
+    async def bounding_box(self, timeout=30000):
+        await self._wait_el(timeout)
+        box = await self._run("""if (!el) return null;
+            const r = el.getBoundingClientRect();
+            if (!r.width && !r.height) return null;
+            return {x: r.x, y: r.y, width: r.width, height: r.height};""")
+        return box
+
+    async def scroll_into_view_if_needed(self, timeout=30000):
+        await self._wait_el(timeout)
+        await self._run("""if (el.scrollIntoViewIfNeeded) el.scrollIntoViewIfNeeded(true);
+            else el.scrollIntoView({block: 'center'}); return true;""")
+
+    async def dispatch_event(self, event_type, timeout=30000):
+        await self._wait_el(timeout)
+        await self._run("""const t = extra;
+            const ev = (t === 'click' || t.startsWith('mouse') || t.startsWith('pointer'))
+                ? new MouseEvent(t, {bubbles: true, cancelable: true, composed: true, view: window})
+                : new Event(t, {bubbles: true, cancelable: true, composed: true});
+            el.dispatchEvent(ev); return true;""", event_type)
+
+    async def click(self, timeout=30000, force=False, **_ignored):
+        """Klik mouse asli di titik tengah elemen. Tanpa `force`, elemen harus terlihat dan
+        tidak tertutup elemen lain (dicek berulang sampai timeout)."""
+        deadline = time.monotonic() + timeout / 1000
+        await self.scroll_into_view_if_needed(timeout)
+        while True:
+            point = await self._run("""if (!el) return null;
+                const r = el.getBoundingClientRect();
+                if (!r.width && !r.height) return {hidden: true};
+                const x = r.x + r.width / 2, y = r.y + r.height / 2;
+                const top = document.elementFromPoint(x, y);
+                return {x, y, hit: !!top && (top === el || el.contains(top) || top.contains(el))};""")
+            if point and not point.get("hidden") and (force or point.get("hit")):
+                break
+            if time.monotonic() > deadline:
+                reason = "tertutup elemen lain" if point and not point.get("hidden") else "tidak terlihat"
+                raise TimeoutError(f"Klik {self._selector!r} gagal: elemen {reason} ({timeout}ms)")
+            await asyncio.sleep(0.1)
+        conn = self._page.conn
+        x, y = point["x"], point["y"]
+        try:
+            await conn.send("Input.dispatchMouseEvent", {"type": "mouseMoved", "x": x, "y": y})
+            await conn.send("Input.dispatchMouseEvent", {"type": "mousePressed", "x": x, "y": y,
+                                                         "button": "left", "buttons": 1, "clickCount": 1})
+            await conn.send("Input.dispatchMouseEvent", {"type": "mouseReleased", "x": x, "y": y,
+                                                         "button": "left", "buttons": 0, "clickCount": 1})
+        except CDPProtocolError:        # browser tanpa domain Input: klik lewat JS
+            await self._run("el.click(); return true;")
+
+    async def fill(self, text, timeout=30000):
+        await self._wait_el(timeout)
+        await self._run("""el.focus(); el.value = extra;
+            el.dispatchEvent(new Event('input', {bubbles: true}));
+            el.dispatchEvent(new Event('change', {bubbles: true})); return true;""", text)
+
+    async def inner_text(self, timeout=30000):
+        await self._wait_el(timeout)
+        return await self._run("return el.innerText;")
+
+    async def text_content(self, timeout=30000):
+        await self._wait_el(timeout)
+        return await self._run("return el.textContent;")
+
+    async def get_attribute(self, name, timeout=30000):
+        await self._wait_el(timeout)
+        return await self._run("return el.getAttribute(extra);", name)
+
+    async def evaluate(self, expression, arg=None, timeout=30000):
+        """Jalankan fungsi JS dengan elemen sebagai argumen pertama: `(el, arg) => ...`."""
+        await self._wait_el(timeout)
+        return await self._run("""const fn = eval('(' + extra[0] + ')'); return fn(el, extra[1]);""",
+                               [expression, arg])
 
 
 _EVAL_WRAPPER = """(async () => {{
@@ -423,6 +587,32 @@ class RawPage:
             if time.monotonic() > deadline:
                 raise TimeoutError(f"Timeout {timeout}ms menunggu '{selector}' ({state})")
             await asyncio.sleep(0.1)
+
+    def locator(self, selector):
+        return Locator(self, selector)
+
+    async def click(self, selector, **kwargs):
+        await self.locator(selector).first.click(**kwargs)
+
+    async def fill(self, selector, text, **kwargs):
+        await self.locator(selector).first.fill(text, **kwargs)
+
+    async def wait_for_timeout(self, ms):
+        await asyncio.sleep(ms / 1000)
+
+    async def content(self):
+        return await self.evaluate("() => document.documentElement.outerHTML")
+
+    async def reload(self, wait_until="domcontentloaded", timeout=30000, **_ignored):
+        return await self.goto(self._url, wait_until=wait_until, timeout=timeout)
+
+    def __getattr__(self, name):
+        # Hanya dipanggil bila atribut tidak ada: beri pesan yang jelas, bukan AttributeError polos.
+        if name.startswith("_"):
+            raise AttributeError(name)
+        raise AttributeError(
+            f"RawPage tidak mendukung '{name}' (API Playwright). Pakai page.evaluate()/page.locator() "
+            "atau ganti ke CDPConfig(transport='playwright') bila browsernya mendukung.")
 
     async def screenshot(self, path=None, timeout=30000, **_ignored):
         result = await self.conn.send("Page.captureScreenshot", {"format": "png"}, timeout=timeout / 1000)

@@ -152,6 +152,10 @@ class _Site(BaseHTTPRequestHandler):
             ctype = "application/json"
         else:
             body = b"""<html><head><title>Uji Raw</title></head><body style="height:6000px">
+            <button id="btn" onclick="document.title='diklik'">klik</button>
+            <button id="tutup" style="position:fixed;top:0;left:0;width:9999px;height:9999px;opacity:0.01;display:none"></button>
+            <ul><li class="r">satu</li><li class="r">dua</li><li class="r" style="display:none">tiga</li></ul>
+            <input id="in">
             <script>
               let page = 0, busy = false;
               async function more() { if (busy) return; busy = true;
@@ -229,6 +233,53 @@ class RealChromeTests(unittest.TestCase):
                 await page.mouse.wheel(0, 500)
                 self.assertGreater(await page.evaluate("() => window.scrollY"), 0)
         run(main())
+
+    def test_locator_api(self):
+        async def main():
+            async with self.manager().session() as page:
+                await page.goto(self.site_url)
+                rows = page.locator("li.r")
+                self.assertEqual(await rows.count(), 3)
+                self.assertEqual(await rows.first.inner_text(), "satu")
+                self.assertEqual(await rows.nth(1).text_content(), "dua")
+                self.assertEqual(await rows.last.text_content(), "tiga")
+                self.assertFalse(await rows.last.is_visible())
+                self.assertEqual(await page.locator("#tidak-ada").count(), 0)
+                self.assertEqual(await page.locator("#tidak-ada").first.count(), 0)
+                box = await page.locator("#btn").first.bounding_box()
+                self.assertGreater(box["width"], 0)
+                await page.locator("#btn").first.scroll_into_view_if_needed(timeout=3000)
+                await page.locator("#btn").first.click(timeout=3000)          # klik mouse asli
+                self.assertEqual(await page.title(), "diklik")
+                await page.evaluate("() => { document.title = 'x' }")
+                await page.locator("#btn").dispatch_event("click")
+                self.assertEqual(await page.title(), "diklik")
+                await page.evaluate("() => { document.title = 'x' }")
+                await page.locator("#btn").first.click(force=True)
+                self.assertEqual(await page.title(), "diklik")
+                await page.locator("#in").fill("halo")
+                self.assertEqual(await page.evaluate("() => document.getElementById('in').value"), "halo")
+                self.assertEqual(await page.locator("#btn").get_attribute("id"), "btn")
+                self.assertEqual(await page.locator("#btn").evaluate("(el, n) => el.id + n", 7), "btn7")
+                with self.assertRaises(TimeoutError):
+                    await page.locator("#tidak-ada").first.click(timeout=300)
+                with self.assertRaises(TimeoutError):
+                    await rows.last.click(timeout=300)                         # tidak terlihat
+                # elemen tertutup overlay: klik normal gagal, force berhasil
+                await page.evaluate("() => { const t = document.getElementById('tutup'); t.style.display='block'; t.style.opacity='0.01'; }")
+                with self.assertRaises(TimeoutError):
+                    await page.locator("#btn").first.click(timeout=300)
+        run(main())
+
+    def test_unsupported_api_has_clear_message(self):
+        async def main():
+            async with self.manager().session() as page:
+                with self.assertRaises(AttributeError) as ctx:
+                    await page.expect_response("x")
+                return str(ctx.exception)
+        message = run(main())
+        self.assertIn("RawPage tidak mendukung 'expect_response'", message)
+        self.assertIn("transport='playwright'", message)
 
     def test_goto_status_and_response_events(self):
         async def main():
