@@ -305,6 +305,19 @@ class RealChromeTests(unittest.TestCase):
         self.assertGreaterEqual(result.count, 25)
         self.assertEqual(result.diagnostics["engine"], "raw-cdp (websocket)")
 
+    def test_capture_works_without_loading_finished_events(self):
+        """Browser yang tidak mengirim Network.loadingFinished tidak boleh membuat data tertahan."""
+        from cdp_scraper.browser.rawpage import RawPage
+        original = RawPage._on_finished
+        RawPage._on_finished = lambda self, params: None
+        try:
+            started = time.monotonic()
+            result = run(Scraper(self.platform(), manager=self.manager()).run("list", limit=25))
+        finally:
+            RawPage._on_finished = original
+        self.assertGreaterEqual(result.count, 25)
+        self.assertLess(time.monotonic() - started, RawPage.RESPONSE_WAIT)
+
     def test_direct_websocket_url(self):
         targets = json.loads(urllib.request.urlopen(f"{self.cdp_url}/json").read())
         ws_url = next(t for t in targets if t["type"] == "page")["webSocketDebuggerUrl"]

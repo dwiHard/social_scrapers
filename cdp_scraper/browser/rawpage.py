@@ -119,16 +119,34 @@ class CDPConnection:
 class RawResponse:
     """Mirip playwright Response: .url .status .request.method/.resource_type, json()/text()/body()."""
 
-    def __init__(self, page, request_id, url, status, method, resource_type, headers):
+    def __init__(self, page, request_id, url, status, method, resource_type, headers, finished=None):
         self._page = page
         self._request_id = request_id
+        self._finished = finished
         self.url = url
         self.status = status
         self.headers = headers
         self.request = SimpleNamespace(method=method, resource_type=resource_type)
 
     async def body(self):
-        result = await self._page.conn.send("Network.getResponseBody", {"requestId": self._request_id})
+        """Body response. Dicoba langsung; bila belum siap (request masih berjalan) tunggu
+        `loadingFinished` atau coba lagi tiap 0.25 detik sampai RawPage.RESPONSE_WAIT, sehingga tetap
+        jalan di browser yang tidak mengirim / terlambat mengirim event tersebut."""
+        deadline = time.monotonic() + RawPage.RESPONSE_WAIT
+        while True:
+            try:
+                result = await self._page.conn.send("Network.getResponseBody", {"requestId": self._request_id})
+                break
+            except CDPProtocolError:
+                if time.monotonic() > deadline:
+                    raise
+                if self._finished is not None and not self._finished.done():
+                    try:
+                        await asyncio.wait_for(asyncio.shield(self._finished), 0.25)
+                    except asyncio.TimeoutError:
+                        pass
+                else:
+                    await asyncio.sleep(0.25)
         data = result.get("body", "")
         return base64.b64decode(data) if result.get("base64Encoded") else data.encode("utf-8")
 
@@ -410,6 +428,10 @@ class RawPage:
                 if required:
                     raise
                 self.log.debug(f"{method} tidak didukung: {e}")
+        try:        # halaman tetap dianggap fokus/visible (tab latar belakang menghentikan infinite scroll)
+            await self.conn.send("Emulation.setFocusEmulationEnabled", {"enabled": True})
+        except CDPProtocolError as e:
+            self.log.debug(f"focus emulation: {e}")
         if timezone:
             try:
                 await self.conn.send("Emulation.setTimezoneOverride", {"timezoneId": timezone})
@@ -460,23 +482,20 @@ class RawPage:
         self._spawn(self._dispatch_response(request_id, response, rtype))
 
     async def _dispatch_response(self, request_id, response, rtype):
-        future = self._finished.get(request_id)
-        try:
-            await asyncio.wait_for(asyncio.shield(future), self.RESPONSE_WAIT)
-        except Exception:
-            pass
-        finally:
-            self._finished.pop(request_id, None)
+        finished = self._finished.get(request_id)
         method = self._requests.pop(request_id, "GET")
         res = RawResponse(self, request_id, response.get("url", ""), int(response.get("status", 0)),
-                          method, rtype, response.get("headers", {}))
-        for handler in list(self._handlers["response"]):
-            try:
-                outcome = handler(res)
-                if asyncio.iscoroutine(outcome):
-                    await outcome
-            except Exception as e:
-                self.log.debug(f"response handler: {e}")
+                          method, rtype, response.get("headers", {}), finished)
+        try:
+            for handler in list(self._handlers["response"]):
+                try:
+                    outcome = handler(res)
+                    if asyncio.iscoroutine(outcome):
+                        await outcome
+                except Exception as e:
+                    self.log.debug(f"response handler: {e}")
+        finally:
+            self._finished.pop(request_id, None)
 
     def _on_finished(self, params):
         future = self._finished.get(params.get("requestId"))
