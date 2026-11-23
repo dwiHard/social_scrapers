@@ -318,6 +318,45 @@ class RealChromeTests(unittest.TestCase):
         self.assertGreaterEqual(result.count, 25)
         self.assertLess(time.monotonic() - started, RawPage.RESPONSE_WAIT)
 
+    def test_dead_tab_is_replaced_by_new_tab(self):
+        """Tab yang crash tidak boleh menggagalkan semua sesi berikutnya (Chrome terpisah agar tes lain aman)."""
+        port = free_port()
+        profile = tempfile.mkdtemp()
+        chrome = subprocess.Popen(
+            [CHROME, "--headless=new", "--no-sandbox", "--disable-gpu", f"--remote-debugging-port={port}",
+             "--remote-allow-origins=*", f"--user-data-dir={profile}", "about:blank"],
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        try:
+            for _ in range(100):
+                try:
+                    urllib.request.urlopen(f"http://127.0.0.1:{port}/json/version", timeout=1).read()
+                    break
+                except Exception:
+                    time.sleep(0.2)
+
+            def mgr():
+                return CDPSessionManager(CDPConfig(cdp_url=f"http://127.0.0.1:{port}", transport="raw",
+                                                   debug_screenshots=False, lock_timeout=5))
+
+            async def main():
+                async with mgr().session() as page:
+                    try:
+                        await page.goto("chrome://crash", timeout=3000)
+                    except Exception:
+                        pass
+                    await asyncio.sleep(0.5)
+                titles = []
+                for _ in range(2):      # termasuk saat sudah tidak ada tab sama sekali
+                    async with mgr().session() as page:
+                        await page.goto(self.site_url)
+                        titles.append(await page.title())
+                return titles
+            self.assertEqual(run(main()), ["Uji Raw", "Uji Raw"])
+        finally:
+            chrome.terminate()
+            chrome.wait(10)
+            shutil.rmtree(profile, ignore_errors=True)
+
     def test_direct_websocket_url(self):
         targets = json.loads(urllib.request.urlopen(f"{self.cdp_url}/json").read())
         ws_url = next(t for t in targets if t["type"] == "page")["webSocketDebuggerUrl"]

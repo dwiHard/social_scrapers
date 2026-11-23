@@ -418,20 +418,21 @@ class RawPage:
 
     # ---- setup -------------------------------------------------------------------------
 
-    async def setup(self, timezone=None, bring_to_front=True):
+    async def setup(self, timezone=None, bring_to_front=True, focus_emulation=False, timeout=10.0):
         """Aktifkan domain yang dibutuhkan. Domain yang tidak didukung hanya jadi peringatan."""
         for method, required in (("Page.enable", True), ("Runtime.enable", True),
                                  ("Network.enable", False), ("Inspector.enable", False)):
             try:
-                await self.conn.send(method)
+                await self.conn.send(method, timeout=timeout)
             except CDPProtocolError as e:
                 if required:
                     raise
                 self.log.debug(f"{method} tidak didukung: {e}")
-        try:        # halaman tetap dianggap fokus/visible (tab latar belakang menghentikan infinite scroll)
-            await self.conn.send("Emulation.setFocusEmulationEnabled", {"enabled": True})
-        except CDPProtocolError as e:
-            self.log.debug(f"focus emulation: {e}")
+        if focus_emulation:      # tab latar belakang dianggap fokus/visible
+            try:
+                await self.conn.send("Emulation.setFocusEmulationEnabled", {"enabled": True}, timeout=timeout)
+            except CDPProtocolError as e:
+                self.log.debug(f"focus emulation: {e}")
         if timezone:
             try:
                 await self.conn.send("Emulation.setTimezoneOverride", {"timezoneId": timezone})

@@ -17,9 +17,11 @@ import urllib.parse
 import urllib.request
 from contextlib import AsyncExitStack, asynccontextmanager
 
-from ..errors import BrowserBusy
+import dataclasses
+
+from ..errors import BrowserBusy, PageCrashed
 from ..logs import get_logger
-from .rawpage import CDPConnection, RawPage
+from .rawpage import CDPConnection, CDPProtocolError, RawPage
 
 ALIASES = {"websocket": "raw", "ws": "raw", "cdp": "raw"}
 
@@ -105,7 +107,21 @@ def resolve_page_target(config, log):
             targets = _http_json(f"{base}/json", headers)
         except urllib.error.HTTPError:
             targets = _http_json(f"{base}/json/list", headers)
-        target = _pick_target(targets, config.target)
+        try:
+            target = _pick_target(targets, config.target)
+        except LookupError:
+            if config.target not in ("first", "new", None, ""):
+                raise
+            target = None
+            for method in ("PUT", "GET"):             # tidak ada tab sama sekali: buat satu
+                try:
+                    target = _http_json(f"{base}/json/new?about:blank", headers, method=method)
+                    owns = True
+                    break
+                except Exception as e:
+                    log.debug(f"/json/new via {method}: {e}")
+            if target is None:
+                raise
 
     ws_url = target["webSocketDebuggerUrl"]
     if config.rewrite_ws_host:
@@ -286,15 +302,12 @@ class RawCDPTransport(Transport):
         page = None
         try:
             log.info(f"Menghubungkan ke CDP mentah di {ws_url}...")
-            conn = await CDPConnection.open(ws_url, headers=auth_headers(cfg), log=log)
-            scheme, netloc = _http_base(cfg.cdp_url)
-
-            async def closer():
-                await asyncio.get_running_loop().run_in_executor(
-                    None, lambda: _http_ok(f"{scheme}://{netloc}/json/close/{target_id}", auth_headers(cfg)))
-
-            page = RawPage(conn, log=log, target_id=target_id, owns_target=owns, closer=closer)
-            await page.setup(timezone=cfg.timezone, bring_to_front=cfg.bring_to_front)
+            try:
+                page = await self._connect(log, ws_url, target_id, owns)
+            except Exception as e:
+                if owns or not _is_dead_tab(e):
+                    raise
+                page = await self._recover(log, e, target_id)
             yield page
         finally:
             if page is not None:
@@ -305,6 +318,56 @@ class RawCDPTransport(Transport):
                 log.info("Sesi CDP mentah selesai.")
             if lock is not None:
                 lock.release()
+
+    async def _connect(self, log, ws_url, target_id, owns):
+        cfg = self.config
+        conn = await CDPConnection.open(ws_url, headers=auth_headers(cfg), log=log)
+        scheme, netloc = _http_base(cfg.cdp_url)
+
+        async def closer():
+            await asyncio.get_running_loop().run_in_executor(
+                None, lambda: _http_ok(f"{scheme}://{netloc}/json/close/{target_id}", auth_headers(cfg)))
+
+        page = RawPage(conn, log=log, target_id=target_id, owns_target=owns, closer=closer)
+        try:
+            await page.setup(timezone=cfg.timezone, bring_to_front=cfg.bring_to_front,
+                             focus_emulation=cfg.focus_emulation)
+        except BaseException:
+            await page.close()
+            raise
+        return page
+
+    async def _recover(self, log, error, dead_target_id=None):
+        """Tab yang dipakai mati (crash / tidak menjawab): coba buka tab baru lewat /json/new."""
+        log.warning(f"Tab browser tidak sehat ({error}); mencoba membuka tab baru...")
+        loop = asyncio.get_running_loop()
+        fresh = dataclasses.replace(self.config, target="new")
+        try:
+            ws_url, target_id, owns = await loop.run_in_executor(None, resolve_page_target, fresh, log)
+        except Exception as e:
+            raise PageCrashed(f"Tab browser crash dan tab baru gagal dibuat ({e}). "
+                              "Restart browser/container, atau tutup tab yang crash.") from error
+        if not owns:
+            raise PageCrashed("Tab browser crash dan browser tidak mendukung pembuatan tab baru (/json/new). "
+                              "Restart browser/container, atau tutup tab yang crash.") from error
+        try:
+            page = await self._connect(log, ws_url, target_id, owns)
+        except Exception as e:
+            raise PageCrashed(f"Tab baru juga gagal dipakai: {e}") from e
+        if dead_target_id:        # tab mati dibuang (sudah ada tab baru, jadi aman) agar sesi berikutnya tidak tersangkut lagi
+            scheme, netloc = _http_base(self.config.cdp_url)
+            try:
+                await loop.run_in_executor(None, lambda: _http_ok(
+                    f"{scheme}://{netloc}/json/close/{dead_target_id}", auth_headers(self.config)))
+            except Exception as e:
+                log.debug(f"tutup tab mati: {e}")
+        return page
+
+
+def _is_dead_tab(error):
+    if isinstance(error, TimeoutError):
+        return True
+    return isinstance(error, CDPProtocolError) and "crash" in str(error).lower()
 
 
 _FALLBACK_HINTS = ("not supported", "protocol error", "browser context management",

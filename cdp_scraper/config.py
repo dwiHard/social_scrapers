@@ -20,6 +20,8 @@ class CDPConfig:
     auth_token: dikirim sebagai 'Authorization: Bearer ...' (mis. CDP_AUTH_TOKEN milik Anoa).
     target: raw saja. 'first' = tab pertama yang ada, 'new' = buat tab baru (/json/new),
             selain itu = id / potongan url / judul tab.
+    focus_emulation: raw saja. True = kirim Emulation.setFocusEmulationEnabled agar tab dianggap fokus
+            (membantu infinite scroll di tab latar belakang; belum tentu didukung semua browser).
     rewrite_ws_host: raw saja. Ganti host:port di webSocketDebuggerUrl dengan host:port cdp_url
             (server di belakang socat/Docker sering mengembalikan 127.0.0.1:9223).
     """
@@ -33,6 +35,7 @@ class CDPConfig:
     auth_token: Optional[str] = field(default=None, repr=False)
     target: str = "first"
     rewrite_ws_host: bool = True
+    focus_emulation: bool = False
     bring_to_front: bool = True
     debug_screenshots: bool = True
     debug_dir: Optional[str] = None
