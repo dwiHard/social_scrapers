@@ -11,6 +11,7 @@ class BufferedInputFile:
 class Bot:
     sent = []            # [(method, kwargs)]
     fail_photo = False
+    fail_document = False
     fail_all = None      # exception untuk semua panggilan
     delay = 0.0
     sessions_closed = 0
@@ -43,6 +44,13 @@ class Bot:
         Bot.sent.append(("send_photo", dict(chat_id=chat_id, photo=photo, caption=caption,
                                             message_thread_id=message_thread_id)))
 
+    async def send_document(self, chat_id, document, caption=None, message_thread_id=None, **kw):
+        await self._maybe_fail()
+        if Bot.fail_document:
+            raise RuntimeError("document rejected")
+        Bot.sent.append(("send_document", dict(chat_id=chat_id, document=document, caption=caption,
+                                               message_thread_id=message_thread_id)))
+
 
 def install():
     saved = {n: sys.modules.get(n) for n in ("aiogram", "aiogram.types")}
@@ -65,6 +73,7 @@ def install():
 def reset():
     Bot.sent = []
     Bot.fail_photo = False
+    Bot.fail_document = False
     Bot.fail_all = None
     Bot.delay = 0.0
     Bot.sessions_closed = 0

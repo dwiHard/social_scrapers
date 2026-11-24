@@ -294,6 +294,7 @@ jadi `Scraper`, platform, preset, dan mapper tidak perlu diubah.
 | :--- | :--- | :--- |
 | `"playwright"` (default) | Playwright/Patchright `connect_over_cdp`, tab baru per sesi | Chrome/Chromium biasa |
 | `"raw"` (alias `"websocket"`, `"cdp"`) | CDP mentah via websocket, memakai tab yang ada | Anoa / browser dengan CDP terbatas |
+| `"pydoll"` | Seperti `raw`, tetapi lapisan websocket-nya memakai [pydoll](https://github.com/autoscrape-labs/pydoll) (`pip install pydoll-python`) | Ingin koneksi/reconnect/event dikelola pydoll |
 | `"auto"` | Coba Playwright, kalau ditolak atau tidak terpasang otomatis pindah ke `raw` (keputusan di-cache) | Tidak yakin browsernya apa |
 
 ```python
@@ -314,6 +315,13 @@ Platform("twitter", endpoints=[...], cdp={"cdp_url": "http://anoa:9225", "transp
 set_default_config(CDPConfig.from_env())
 ```
 
+**Tentang transport `pydoll`:** hanya lapisan koneksinya (`ConnectionHandler`, websocket level-halaman) yang dipakai pydoll;
+seluruh API halaman (`goto`, `evaluate`, `locator`, capture response, scroll) tetap dari `RawPage`, jadi perilakunya sama dengan `raw`.
+Fitur tingkat tinggi pydoll (`find`, `humanize`, Cloudflare Turnstile, HAR) tidak diekspos di sini. Tab dipilih lewat `/json`
+seperti `raw`, sehingga tidak memakai `Browser.*`/`Target.*`. Header `Authorization` tidak bisa dikirim pada websocket pydoll
+(hanya untuk request HTTP `/json`). Diuji terhadap pydoll *tiruan* yang mengikuti dokumentasi; untuk pydoll asli jalankan
+`python examples/pydoll_smoke.py http://host:port`.
+
 Opsi khusus `raw`:
 
 - `cdp_url` berbentuk `http://host:port` -> tab dicari lewat `/json`; berbentuk `ws://host:port/devtools/page/<id>` -> dipakai langsung.
@@ -321,6 +329,8 @@ Opsi khusus `raw`:
 - `rewrite_ws_host` (default `True`): mengganti `127.0.0.1:9223` di `webSocketDebuggerUrl` dengan host:port dari `cdp_url`, supaya tetap jalan di belakang socat/Docker.
 - Tab yang dipakai bersama hanya boleh dipakai **satu sesi dalam satu waktu** (sesi lain menunggu sampai `lock_timeout`, lalu `BrowserBusy`). Jadi `max_sessions` efektif 1 per tab.
 - API halaman yang tersedia di `raw`: `goto`, `evaluate`, `title`, `url`, `inner_text`, `wait_for_selector`, `screenshot`, `click`, `fill`, `content`, `reload`, `keyboard`/`mouse` dan `locator(css)` (`first`/`last`/`nth`, `count`, `bounding_box`, `scroll_into_view_if_needed`, `click(force=)`, `dispatch_event`, `fill`, `inner_text`, `text_content`, `get_attribute`, `is_visible`, `wait_for`, `evaluate`). `locator` hanya untuk selector CSS (termasuk `:has()`); selector Playwright seperti `text=` atau `:has-text()` tidak didukung. API lain (mis. `expect_response`) memunculkan error yang menjelaskan hal itu.
+- Tab yang crash (`Target crashed`) atau tidak menjawab ditangani otomatis: library membuka tab baru lewat `/json/new`, membuang tab mati, dan membuat tab bila tidak ada sama sekali. Kalau browser tidak mendukung `/json/new`, muncul `PageCrashed` dengan saran restart browser.
+- `focus_emulation=True` (default `False`) mengirim `Emulation.setFocusEmulationEnabled` agar tab latar belakang dianggap fokus; aktifkan hanya bila browser mendukungnya.
 - Mengandalkan `Input.*` untuk scroll; bila browser tidak punya domain itu, scroll otomatis jatuh ke JavaScript.
 - Chrome asli hanya menerima IP atau `localhost` di Host header pada `/json`; kalau memakai Chrome (bukan Anoa) lewat nama service Docker, pakai IP-nya.
 
@@ -353,6 +363,77 @@ asyncio.run(main())
 ```
 
 `health(deep=True)` ikut memakai transport yang dipilih, dan `diagnostics["engine"]` berisi `raw-cdp (websocket)` atau `playwright (connect_over_cdp)`.
+
+---
+
+## 🧩 Deteksi captcha & jeda otomatis
+
+Saat captcha terdeteksi, scraper berhenti sejenak (default **60 detik**) supaya captcha bisa diselesaikan manual
+(mis. lewat noVNC), lalu melanjutkan. Dicek setelah halaman dibuka dan setiap kali selesai scroll.
+
+```python
+from cdp_scraper import CaptchaGuard, Platform
+from cdp_scraper.presets.tiktok import TIKTOK_CAPTCHA   # selector + teks captcha TikTok bawaan
+
+Platform("tiktok", endpoints=[...], captcha=TIKTOK_CAPTCHA)
+# atau sendiri:
+Platform("x", endpoints=[...], captcha=CaptchaGuard(
+    selectors=("#captcha_container", "iframe[src*='captcha']"),
+    texts=("verify to continue",), wait=60, max_pauses=3))
+```
+
+| Opsi | Default | Arti |
+| :--- | :--- | :--- |
+| `selectors` | `()` | Selector CSS elemen captcha (hanya dihitung bila terlihat) |
+| `texts` | `()` | Potongan teks halaman penanda captcha |
+| `wait` | `60` | Lama jeda (detik) tiap kali terdeteksi |
+| `max_pauses` | `3` | Jumlah jeda sebelum menyerah (`stopped_by="captcha"`, status `error`) |
+| `early_resume` | `True` | Lanjut lebih awal begitu captcha hilang; `False` = selalu jeda penuh |
+| `reload_if_empty` | `True` | Setelah captcha selesai dan belum ada data, buka ulang halaman |
+
+### Membaca konfigurasi dari file `.env`
+
+```python
+from cdp_scraper import load_env_file
+load_env_file(".env")        # panggil paling awal, sebelum CDPConfig.from_env() / TelegramNotifier.from_env()
+```
+
+Parser bawaan tanpa dependensi (`KEY=VALUE`, `export KEY=VALUE`, kutip, komentar `#`). Variabel yang sudah ada di environment
+(docker-compose, systemd, `export`) **tidak ditimpa**, kecuali `override=True`; file tidak ada = diabaikan
+(`required=True` untuk memaksa). Jangan commit `.env` berisi token ke git.
+
+### Alert Telegram (aiogram)
+
+```
+pip install aiogram            # atau: pip install "beo-mcdp[telegram]"
+export TELEGRAM_BOT_TOKEN=123:ABC   TELEGRAM_CHAT_ID=-1001234567890
+export TELEGRAM_THREAD_ID=7         # opsional: topik di grup forum
+export TELEGRAM_HINT="Selesaikan di noVNC http://host:6900"   # opsional: catatan di pesan
+```
+
+```python
+from cdp_scraper import TelegramNotifier, notify_hook
+from cdp_scraper.presets.tiktok import TIKTOK_CAPTCHA
+
+notifier = TelegramNotifier.from_env()          # None bila env belum diisi
+Platform("tiktok", endpoints=[...], captcha=TIKTOK_CAPTCHA.with_notify(notify_hook(notifier)))
+```
+
+Uji kirim dan lihat alasan kegagalannya dengan `python examples/telegram_test.py` (cek env, aiogram, lalu mengirim pesan uji).
+Bila alert tidak aktif, log menulis `Alert captcha tidak aktif: tidak ada hook notify`; bila gagal kirim, `Notifikasi Telegram gagal: <alasan>`.
+
+Alert dikirim saat captcha **terdeteksi** (dengan screenshot halaman), **selesai** (scraping dilanjutkan), dan **menyerah**
+(setelah `max_pauses`). Pesan memuat platform / endpoint / URL, penanda captcha, dan nomor jeda. Pengiriman berjalan di latar
+belakang sehingga tidak memperpanjang jeda, dan kegagalan (jaringan, token salah, aiogram belum terpasang) hanya masuk log,
+tidak pernah menghentikan scraping; token disamarkan di log. Opsi `TelegramNotifier`: `thread_id`, `send_screenshot`, `hint`,
+`events` (default `("detected", "resolved", "gave_up")`), `send_log`, `log_events`, `timeout`, `min_interval` (jarak minimal antar alert "detected").
+Alert "detected" dan "gave_up" juga melampirkan **file log debug** (`captcha_<event>_<waktu>.txt`: ringkasan target/URL/engine/jaringan
++ 120 baris log terakhir dari run itu) setelah foto; matikan dengan `send_log=False` atau `TELEGRAM_SEND_LOG=false`
+(`log_events` mengatur event mana yang melampirkan log). Gagal kirim lampiran tidak membatalkan alert.
+Hook sendiri juga bisa dipakai: `CaptchaGuard(..., notify=fungsi)` dengan `fungsi(event: dict)` sync/async.
+
+Setiap deteksi menyimpan `debug_captcha.png` (bila `debug_screenshots` aktif) dan hasilnya tercatat di
+`diagnostics["captcha"] = {"detected": n, "pauses": n, "blocked": bool}`.
 
 ---
 

@@ -73,6 +73,15 @@ class UnitTests(unittest.TestCase):
         self.assertTrue(logs)
         self.assertTrue(all("SECRET" not in m for m in logs))
 
+    def test_last_error_tracks_failures(self):
+        self.assertIsNone(self.notifier.last_error)
+        Bot.fail_all = RuntimeError("Unauthorized")
+        self.assertFalse(run(self.notifier.captcha_event(event())))
+        self.assertEqual(self.notifier.last_error, "RuntimeError: Unauthorized")
+        Bot.fail_all = None
+        self.assertTrue(run(self.notifier.captcha_event(event())))
+        self.assertIsNone(self.notifier.last_error)
+
     def test_timeout_is_bounded(self):
         Bot.delay = 5
         self.notifier.timeout = 0.3
@@ -91,6 +100,40 @@ class UnitTests(unittest.TestCase):
         n = TelegramNotifier("t", "1", send_screenshot=False)
         run(n.captcha_event(event()))
         self.assertEqual(Bot.sent[0][0], "send_message")
+
+    def test_log_attached_as_document_after_photo(self):
+        text = "Waktu: x\n--- log ---\n[WARNING] Captcha terdeteksi"
+        self.assertTrue(run(self.notifier.captcha_event(event(debug_text=text))))
+        self.assertEqual([m for m, _ in Bot.sent], ["send_photo", "send_document"])
+        kw = Bot.sent[1][1]
+        self.assertEqual((kw["chat_id"], kw["message_thread_id"]), ("-100500", 7))
+        self.assertEqual(kw["document"].file, text.encode())
+        self.assertTrue(kw["document"].filename.startswith("captcha_detected_") and kw["document"].filename.endswith(".txt"))
+        self.assertEqual(Bot.sessions_closed, 1)               # satu sesi untuk foto + log
+
+    def test_log_attached_on_give_up_but_not_on_resolved(self):
+        run(self.notifier.captcha_event(event("resolved", debug_text="x")))
+        run(self.notifier.captcha_event(event("gave_up", debug_text="y")))
+        self.assertEqual([m for m, _ in Bot.sent], ["send_message", "send_photo", "send_document"])
+
+    def test_log_disabled_or_missing(self):
+        n = TelegramNotifier("t", "1", send_log=False)
+        run(n.captcha_event(event(debug_text="x")))
+        run(self.notifier.captcha_event(event()))               # tanpa debug_text
+        self.assertNotIn("send_document", [m for m, _ in Bot.sent])
+        self.assertFalse(TelegramNotifier.from_env(environ={"TELEGRAM_BOT_TOKEN": "t", "TELEGRAM_CHAT_ID": "1",
+                                                            "TELEGRAM_SEND_LOG": "false"}).send_log)
+
+    def test_log_sent_even_when_photo_fails(self):
+        Bot.fail_photo = True
+        run(self.notifier.captcha_event(event(debug_text="x")))
+        self.assertEqual([m for m, _ in Bot.sent], ["send_message", "send_document"])
+
+    def test_document_failure_does_not_fail_alert(self):
+        Bot.fail_document = True
+        self.assertTrue(run(self.notifier.captcha_event(event(debug_text="x"))))
+        self.assertEqual([m for m, _ in Bot.sent], ["send_photo"])
+        self.assertIn("log debug gagal", self.notifier.last_error)
 
     def test_missing_aiogram_is_not_fatal(self):
         self.uninstall()
@@ -126,12 +169,20 @@ class CaptchaAlertIntegration(CaptchaTests):
     def test_alert_on_detect_and_resolve(self):
         result, _ = self.scrape("/solved", self.guard(wait=20, poll=0.3, max_pauses=2))
         self.assertEqual(result.count, 5)
-        kinds = self.kinds()
+        kinds = [k for k in self.kinds() if k[0] != "send_document"]
         self.assertEqual([m for m, _ in kinds], ["send_photo", "send_message"])
         self.assertIn("Captcha terdeteksi", kinds[0][1])
         self.assertIn("t / f", kinds[0][1])                     # platform "t", endpoint "f" dari runner
         self.assertTrue(Bot.sent[0][1]["photo"].file.startswith(b"\x89PNG"))    # screenshot Chrome asli
         self.assertIn("Captcha selesai", kinds[1][1])
+
+    def test_alert_includes_debug_log_document(self):
+        self.scrape("/solved", self.guard(wait=20, poll=0.3, max_pauses=2))
+        docs = [kw for m, kw in Bot.sent if m == "send_document"]
+        self.assertEqual(len(docs), 1)                           # hanya "detected"; "resolved" tanpa log
+        body = docs[0]["document"].file.decode()
+        for text in ("Kejadian  : detected", "Target    : t / f", "--- log", "Captcha terdeteksi", "/solved"):
+            self.assertIn(text, body)
 
     def test_alert_on_give_up(self):
         result, _ = self.scrape("/stuck", self.guard(wait=0.6, poll=0.2, max_pauses=2))
@@ -152,6 +203,26 @@ class CaptchaAlertIntegration(CaptchaTests):
         result, _ = self.scrape("/solved", CaptchaGuard(selectors=("#captcha_container",), wait=20, poll=0.3,
                                                          max_pauses=2, notify=broken))
         self.assertEqual(result.count, 5)
+
+    def test_inactive_alert_is_visible_in_log(self):
+        from cdp_scraper import Endpoint, Platform, Scraper
+        from cdp_scraper.logs import JobLogger
+        import logging
+
+        records = []
+
+        class Capture(logging.Handler):
+            def emit(self, record):
+                records.append(record.getMessage())
+        base = logging.getLogger("cdp_scraper_test_inactive")
+        base.setLevel(logging.DEBUG)
+        base.addHandler(Capture())
+        platform = Platform("t", captcha=CaptchaGuard(selectors=("#captcha_container",), wait=0.5, poll=0.2,
+                                                      max_pauses=1), endpoints=[Endpoint(
+            "f", url=self.base + "/stuck?run=inactive", api_match="/api/feed", parser=lambda d: d["items"],
+            key="id", initial_sleep=0.2, max_wait=1.0, max_scrolls=2, stall_limit=1, limit=5)])
+        run(Scraper(platform, manager=self.manager(), log=JobLogger(base=base)).run("f"))
+        self.assertTrue(any("Alert captcha tidak aktif" in m for m in records), records)
 
     def test_unconfigured_notifier_means_no_notify(self):
         guard = CaptchaGuard(selectors=("#captcha_container",), wait=20, poll=0.3, max_pauses=2).with_notify(

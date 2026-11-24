@@ -17,7 +17,8 @@ from .logs import get_logger
 
 class TelegramNotifier:
     def __init__(self, token, chat_id, *, thread_id=None, send_screenshot=True, hint=None,
-                 events=("detected", "resolved", "gave_up"), timeout=15.0, min_interval=0.0, log=None):
+                 events=("detected", "resolved", "gave_up"), send_log=True, log_events=("detected", "gave_up"),
+                 timeout=15.0, min_interval=0.0, log=None):
         if not token or not chat_id:
             raise ValueError("token dan chat_id Telegram wajib diisi")
         self.token = token
@@ -26,10 +27,13 @@ class TelegramNotifier:
         self.send_screenshot = send_screenshot
         self.hint = hint
         self.events = tuple(events)
+        self.send_log = send_log                 # lampirkan log debug (file .txt) pada alert
+        self.log_events = tuple(log_events)
         self.timeout = timeout
         self.min_interval = min_interval
         self.log = log or get_logger()
         self._last_detected = None
+        self.last_error = None      # alasan kegagalan kirim terakhir (None = terakhir sukses)
 
     @classmethod
     def from_env(cls, prefix="", environ=None, **kwargs):
@@ -41,6 +45,9 @@ class TelegramNotifier:
             return None
         kwargs.setdefault("thread_id", env.get(f"{prefix}TELEGRAM_THREAD_ID"))
         kwargs.setdefault("hint", env.get(f"{prefix}TELEGRAM_HINT"))
+        flag = env.get(f"{prefix}TELEGRAM_SEND_LOG")
+        if flag not in (None, ""):
+            kwargs.setdefault("send_log", flag.strip().lower() not in ("0", "false", "no", "off"))
         return cls(token, chat_id, **kwargs)
 
     # ---- format pesan ----------------------------------------------------------------------
@@ -76,30 +83,50 @@ class TelegramNotifier:
     def _mask(self, text):
         return str(text).replace(self.token, "***")
 
-    async def send(self, text, photo=None):
-        """Kirim pesan (dengan foto bila ada). True bila berhasil; tidak pernah melempar exception."""
+    async def send(self, text, photo=None, document=None):
+        """Kirim pesan (dengan foto bila ada) lalu `document=(bytes, filename)` bila ada.
+        True bila pesan utama terkirim; gagal kirim dokumen tidak menggagalkan alert. Tidak pernah melempar."""
         try:
             from aiogram import Bot
         except ImportError:
+            self.last_error = "aiogram belum terpasang"
             self.log.warning("Notifikasi Telegram dilewati: aiogram belum terpasang (pip install aiogram)")
             return False
         extra = {"message_thread_id": self.thread_id} if self.thread_id is not None else {}
+        doc_error = []
         try:
             async def deliver():
+                from aiogram.types import BufferedInputFile
                 async with Bot(token=self.token) as bot:
+                    sent = False
                     if photo:
-                        from aiogram.types import BufferedInputFile
                         try:
                             await bot.send_photo(chat_id=self.chat_id, caption=text[:1024], **extra,
                                                  photo=BufferedInputFile(photo, filename="captcha.png"))
-                            return
+                            sent = True
                         except Exception as e:      # gagal kirim foto: tetap kirim teks
                             self.log.debug(f"send_photo gagal ({self._mask(e)}), kirim teks saja")
-                    await bot.send_message(chat_id=self.chat_id, text=text[:4096], **extra)
+                    if not sent:
+                        await bot.send_message(chat_id=self.chat_id, text=text[:4096], **extra)
+                    if document:
+                        data, filename = document
+                        try:
+                            await bot.send_document(chat_id=self.chat_id, caption="Log debug", **extra,
+                                                    document=BufferedInputFile(data, filename=filename))
+                        except Exception as e:
+                            doc_error.append(f"{e.__class__.__name__}: {self._mask(e)}")
             await asyncio.wait_for(deliver(), self.timeout)
+            self.last_error = None
+            if doc_error:
+                self.last_error = f"log debug gagal dikirim ({doc_error[0]})"
+                self.log.warning(f"Notifikasi Telegram terkirim, tapi {self.last_error}")
+            else:
+                self.log.info("Notifikasi Telegram terkirim" + (" (+log debug)" if document else ""))
             return True
         except Exception as e:
-            self.log.warning(f"Notifikasi Telegram gagal: {self._mask(e) or e.__class__.__name__}")
+            reason = self._mask(e) or e.__class__.__name__
+            self.last_error = f"{e.__class__.__name__}: {reason}"
+            self.log.warning(f"Notifikasi Telegram gagal: {self.last_error}")
             return False
 
     async def captcha_event(self, event):
@@ -113,7 +140,11 @@ class TelegramNotifier:
                 return False
             self._last_detected = now
         photo = event.get("screenshot") if self.send_screenshot and kind != "resolved" else None
-        return await self.send(self.format(event), photo)
+        document = None
+        if self.send_log and kind in self.log_events and event.get("debug_text"):
+            stamp = time.strftime("%Y%m%d_%H%M%S")
+            document = (str(event["debug_text"]).encode("utf-8", "replace"), f"captcha_{kind}_{stamp}.txt")
+        return await self.send(self.format(event), photo, document)
 
 
 def notify_hook(notifier):
