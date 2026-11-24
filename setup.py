@@ -16,6 +16,8 @@ setup(
     install_requires=[],   # playwright opsional bila memakai transport="raw"
     extras_require={
         "playwright": ["playwright>=1.57.0"],
+        "pydoll": ["pydoll-python"],
+        "telegram": ["aiogram>=3.0"],
         "patchright": ["patchright"],
         "kafka": ["confluent-kafka"],
     },
