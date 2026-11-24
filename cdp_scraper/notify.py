@@ -18,7 +18,7 @@ from .logs import get_logger
 class TelegramNotifier:
     def __init__(self, token, chat_id, *, thread_id=None, send_screenshot=True, hint=None,
                  events=("detected", "resolved", "gave_up"), send_log=True, log_events=("detected", "gave_up"),
-                 timeout=15.0, min_interval=0.0, log=None):
+                 first_pause_only=True, timeout=15.0, min_interval=0.0, log=None):
         if not token or not chat_id:
             raise ValueError("token dan chat_id Telegram wajib diisi")
         self.token = token
@@ -29,6 +29,7 @@ class TelegramNotifier:
         self.events = tuple(events)
         self.send_log = send_log                 # lampirkan log debug (file .txt) pada alert
         self.log_events = tuple(log_events)
+        self.first_pause_only = first_pause_only   # "detected" hanya dikirim pada jeda ke-1 (bukan tiap jeda ulang)
         self.timeout = timeout
         self.min_interval = min_interval
         self.log = log or get_logger()
@@ -45,6 +46,9 @@ class TelegramNotifier:
             return None
         kwargs.setdefault("thread_id", env.get(f"{prefix}TELEGRAM_THREAD_ID"))
         kwargs.setdefault("hint", env.get(f"{prefix}TELEGRAM_HINT"))
+        flag = env.get(f"{prefix}TELEGRAM_FIRST_ONLY")
+        if flag not in (None, ""):
+            kwargs.setdefault("first_pause_only", flag.strip().lower() not in ("0", "false", "no", "off"))
         flag = env.get(f"{prefix}TELEGRAM_SEND_LOG")
         if flag not in (None, ""):
             kwargs.setdefault("send_log", flag.strip().lower() not in ("0", "false", "no", "off"))
@@ -133,6 +137,8 @@ class TelegramNotifier:
         """Hook untuk `CaptchaGuard(notify=...)`."""
         kind = event.get("event")
         if kind not in self.events:
+            return False
+        if kind == "detected" and self.first_pause_only and (event.get("pause") or 1) > 1:
             return False
         if kind == "detected" and self.min_interval:
             now = time.monotonic()

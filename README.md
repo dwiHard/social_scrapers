@@ -426,7 +426,7 @@ Alert dikirim saat captcha **terdeteksi** (dengan screenshot halaman), **selesai
 (setelah `max_pauses`). Pesan memuat platform / endpoint / URL, penanda captcha, dan nomor jeda. Pengiriman berjalan di latar
 belakang sehingga tidak memperpanjang jeda, dan kegagalan (jaringan, token salah, aiogram belum terpasang) hanya masuk log,
 tidak pernah menghentikan scraping; token disamarkan di log. Opsi `TelegramNotifier`: `thread_id`, `send_screenshot`, `hint`,
-`events` (default `("detected", "resolved", "gave_up")`), `send_log`, `log_events`, `timeout`, `min_interval` (jarak minimal antar alert "detected").
+`events` (default `("detected", "resolved", "gave_up")`), `send_log`, `log_events`, `first_pause_only` (default True: "detected" dikirim sekali, pada jeda ke-1; jeda ke-2/3 tidak mengirim ulang, `TELEGRAM_FIRST_ONLY=false` untuk mengirim tiap jeda), `timeout`, `min_interval` (jarak minimal antar alert "detected").
 Alert "detected" dan "gave_up" juga melampirkan **file log debug** (`captcha_<event>_<waktu>.txt`: ringkasan target/URL/engine/jaringan
 + 120 baris log terakhir dari run itu) setelah foto; matikan dengan `send_log=False` atau `TELEGRAM_SEND_LOG=false`
 (`log_events` mengatur event mana yang melampirkan log). Gagal kirim lampiran tidak membatalkan alert.

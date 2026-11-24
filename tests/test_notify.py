@@ -116,6 +116,16 @@ class UnitTests(unittest.TestCase):
         run(self.notifier.captcha_event(event("gave_up", debug_text="y")))
         self.assertEqual([m for m, _ in Bot.sent], ["send_message", "send_photo", "send_document"])
 
+    def test_detected_sent_once_per_episode(self):
+        for pause in (1, 2, 3):
+            run(self.notifier.captcha_event(event(pause=pause, debug_text="x")))
+        run(self.notifier.captcha_event(event("gave_up", pause=3, debug_text="y")))
+        self.assertEqual([m for m, _ in Bot.sent], ["send_photo", "send_document", "send_photo", "send_document"])
+        every = TelegramNotifier("t", "1", first_pause_only=False)
+        for pause in (1, 2, 3):
+            run(every.captcha_event(event(pause=pause)))
+        self.assertEqual(sum(m == "send_photo" for m, _ in Bot.sent), 5)
+
     def test_log_disabled_or_missing(self):
         n = TelegramNotifier("t", "1", send_log=False)
         run(n.captcha_event(event(debug_text="x")))
@@ -188,14 +198,14 @@ class CaptchaAlertIntegration(CaptchaTests):
         result, _ = self.scrape("/stuck", self.guard(wait=0.6, poll=0.2, max_pauses=2))
         self.assertEqual(result.stopped_by, "captcha")
         texts = [t for _, t in self.kinds()]
-        self.assertEqual(sum("Captcha terdeteksi" in t for t in texts), 2)
+        self.assertEqual(sum("Captcha terdeteksi" in t for t in texts), 1)     # jeda ke-2 tidak dikirim ulang
         self.assertEqual(sum("tidak selesai" in t for t in texts), 1)
 
     def test_slow_telegram_does_not_extend_pause(self):
         Bot.delay = 2.0                       # kirim lambat; jeda 1,2 detik x2 tidak boleh ikut menunggu
         result, elapsed = self.scrape("/stuck", self.guard(wait=0.6, poll=0.2, max_pauses=2))
         self.assertEqual(result.stopped_by, "captcha")
-        self.assertGreaterEqual(len(Bot.sent), 3)               # semua alert tetap terkirim sebelum selesai
+        self.assertGreaterEqual(len(Bot.sent), 3)               # detected + log + gave_up tetap terkirim sebelum selesai
 
     def test_failing_hook_does_not_break_scrape(self):
         def broken(_event):
