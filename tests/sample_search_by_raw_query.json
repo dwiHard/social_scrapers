@@ -1,0 +1,562 @@
+{
+ "data": {
+  "search_by_raw_query": {
+   "search_timeline": {
+    "timeline": {
+     "instructions": [
+      {
+       "__typename": "TimelineAddEntries",
+       "entries": [
+        {
+         "content": {
+          "__typename": "TimelineTimelineItem",
+          "client_event_info": {
+           "component": "result",
+           "details": {
+            "timelines_details": {}
+           },
+           "element": "tweet"
+          },
+          "content": {
+           "__isTimelineTimelineItemContent": "TimelineTweet",
+           "__typename": "TimelineTweet",
+           "display_type": "Tweet",
+           "tweet_results": {
+            "id": "VHdlZXRSZXN1bHRzOjIxMjUxNTk5ODY3MjkwMzQwMjQ=",
+            "rest_id": "2125159986729034024",
+            "result": {
+             "__isTweetResult": "Tweet",
+             "__typename": "Tweet",
+             "cashtag_attachments": [],
+             "conversation_muted": false,
+             "core": {
+              "user_results": {
+               "id": "VXNlclJlc3VsdHM6MTA4NTQzMzU4",
+               "result": {
+                "__typename": "User",
+                "avatar": {
+                 "image_url": "https://pbs.twimg.com/profile_images/1076479887056154627/u0KZkg3a_normal.jpg"
+                },
+                "core": {
+                 "name": "BMKG",
+                 "screen_name": "infoBMKG"
+                },
+                "follow_request_sent": false,
+                "id": "VXNlcjoxMDg1NDMzNTg=",
+                "identity_profile_labels_highlighted_label": {},
+                "is_following": false,
+                "location": {
+                 "location": "Indonesia"
+                },
+                "parody_commentary_fan_label": "None",
+                "pinned_items": {},
+                "privacy": {
+                 "protected": false
+                },
+                "profile_bio": {
+                 "description": "The official Twitter of BMKG Indonesia - Twitter resmi BMKG - Informasi Cuaca, Iklim, dan Gempabumi di Indonesia - Badan Meteorologi, Klimatologi, dan Geofisika"
+                },
+                "profile_image_shape": "Square",
+                "relationship_counts": {
+                 "followers": 10124827,
+                 "following": 40
+                },
+                "relationship_perspectives": {
+                 "blocking": false,
+                 "followed_by": false,
+                 "following": false,
+                 "muting": false
+                },
+                "rest_id": "108543358",
+                "super_follow_eligible": false,
+                "super_followed_by": false,
+                "super_following": false,
+                "tweet_counts": {
+                 "tweets": 447563
+                },
+                "verification": {
+                 "is_blue_verified": true,
+                 "verified_type": "Government"
+                }
+               }
+              }
+             },
+             "counts": {
+              "bookmark_count": 0,
+              "favorite_count": 2,
+              "quote_count": 0,
+              "reply_count": 0,
+              "retweet_count": 0
+             },
+             "details": {
+              "cashtag_entities": [],
+              "created_at_ms": 1795512599000,
+              "display_text_range": [
+               0,
+               266
+              ],
+              "full_text": "#Gempa Info Gempa Mag:2.4, 24-Nov-26 16:26:45 WIB, Lok: 9.28 LS - 115.65 BT (71 km Tenggara KUTASELATAN-BALI), Kedlmn: 65 km #BMKG\nDisclaimer: Informasi ini mengutamakan kecepatan, sehingga hasil pengolahan data belum stabil dan bisa berubah seiring kelengkapan data https://t.co/3uypMD152c",
+              "hashtag_entities": [
+               {
+                "indices": [
+                 0,
+                 6
+                ],
+                "text": "Gempa"
+               },
+               {
+                "indices": [
+                 125,
+                 130
+                ],
+                "text": "BMKG"
+               }
+              ],
+              "smarttags": []
+             },
+             "grok_analysis_button": true,
+             "grok_translated_post_with_availability": {
+              "__typename": "ApiGrokTranslateResponse",
+              "is_available": false
+             },
+             "id": "VHdlZXQ6MjEyNTE1OTk4NjcyOTAzNDAyNA==",
+             "legacy": {
+              "conversation_id_str": "2125159986729034024",
+              "entities": {
+               "media": [
+                {
+                 "expanded_url": "https://x.com/infoBMKG/status/2125159986729034024/photo/1"
+                }
+               ]
+              },
+              "lang": "in",
+              "possibly_sensitive": false
+             },
+             "media_entities2": [
+              {
+               "expanded_url": "https://x.com/infoBMKG/status/2125159986729034024/photo/1",
+               "ext_media_availability": {
+                "status": "Available"
+               },
+               "ext_playlists": [],
+               "id_str": "2125159979195969536",
+               "indices": [
+                267,
+                290
+               ],
+               "media_url_https": "https://pbs.twimg.com/tweet_video_thumb/HX4VvdLaMAAUxx2.jpg",
+               "original_info": {
+                "height": 350,
+                "width": 332
+               },
+               "type": "animated_gif"
+              }
+             ],
+             "mention_entities": [],
+             "perspective": {
+              "favorited": false,
+              "retweeted": false
+             },
+             "quick_promote_eligibility": {
+              "eligibility": "IneligibleNotVerified"
+             },
+             "rest_id": "2125159986729034024",
+             "url_entities": [],
+             "views": {
+              "count": "14769"
+             }
+            }
+           }
+          }
+         },
+         "entry_id": "tweet-2125159986729034024",
+         "sort_index": "2125166262387474432"
+        },
+        {
+         "content": {
+          "__typename": "TimelineTimelineItem",
+          "client_event_info": {
+           "component": "result",
+           "details": {
+            "timelines_details": {}
+           },
+           "element": "tweet"
+          },
+          "content": {
+           "__isTimelineTimelineItemContent": "TimelineTweet",
+           "__typename": "TimelineTweet",
+           "display_type": "Tweet",
+           "tweet_results": {
+            "id": "VHdlZXRSZXN1bHRzOjIxMjUxNTg4NTAxMzU1NjgzOTE=",
+            "rest_id": "2125158850135568391",
+            "result": {
+             "__isTweetResult": "Tweet",
+             "__typename": "Tweet",
+             "cashtag_attachments": [],
+             "conversation_muted": false,
+             "core": {
+              "user_results": {
+               "id": "VXNlclJlc3VsdHM6MTA4NTQzMzU4",
+               "result": {
+                "__typename": "User",
+                "avatar": {
+                 "image_url": "https://pbs.twimg.com/profile_images/1076479887056154627/u0KZkg3a_normal.jpg"
+                },
+                "core": {
+                 "name": "BMKG",
+                 "screen_name": "infoBMKG"
+                },
+                "follow_request_sent": false,
+                "id": "VXNlcjoxMDg1NDMzNTg=",
+                "identity_profile_labels_highlighted_label": {},
+                "is_following": false,
+                "location": {
+                 "location": "Indonesia"
+                },
+                "parody_commentary_fan_label": "None",
+                "pinned_items": {},
+                "privacy": {
+                 "protected": false
+                },
+                "profile_bio": {
+                 "description": "The official Twitter of BMKG Indonesia - Twitter resmi BMKG - Informasi Cuaca, Iklim, dan Gempabumi di Indonesia - Badan Meteorologi, Klimatologi, dan Geofisika"
+                },
+                "profile_image_shape": "Square",
+                "relationship_counts": {
+                 "followers": 10124827,
+                 "following": 40
+                },
+                "relationship_perspectives": {
+                 "blocking": false,
+                 "followed_by": false,
+                 "following": false,
+                 "muting": false
+                },
+                "rest_id": "108543358",
+                "super_follow_eligible": false,
+                "super_followed_by": false,
+                "super_following": false,
+                "tweet_counts": {
+                 "tweets": 447563
+                },
+                "verification": {
+                 "is_blue_verified": true,
+                 "verified_type": "Government"
+                }
+               }
+              }
+             },
+             "counts": {
+              "bookmark_count": 0,
+              "favorite_count": 2,
+              "quote_count": 0,
+              "reply_count": 0,
+              "retweet_count": 0
+             },
+             "details": {
+              "cashtag_entities": [],
+              "created_at_ms": 1795512328000,
+              "display_text_range": [
+               0,
+               273
+              ],
+              "full_text": "#Gempa Info Gempa Mag:3.3, 24-Nov-26 16:22:36 WIB, Lok: 0.01 LS - 124.38 BT (61 km Tenggara BOLAANGUKI-BOLSEL-SULUT), Kedlmn: 21 km #BMKG\nDisclaimer: Informasi ini mengutamakan kecepatan, sehingga hasil pengolahan data belum stabil dan bisa berubah seiring kelengkapan data https://t.co/yhRkim63Ib",
+              "hashtag_entities": [
+               {
+                "indices": [
+                 0,
+                 6
+                ],
+                "text": "Gempa"
+               },
+               {
+                "indices": [
+                 132,
+                 137
+                ],
+                "text": "BMKG"
+               }
+              ],
+              "smarttags": []
+             },
+             "grok_analysis_button": true,
+             "grok_translated_post_with_availability": {
+              "__typename": "ApiGrokTranslateResponse",
+              "is_available": false
+             },
+             "id": "VHdlZXQ6MjEyNTE1ODg1MDEzNTU2ODM5MQ==",
+             "legacy": {
+              "conversation_id_str": "2125158850135568391",
+              "entities": {
+               "media": [
+                {
+                 "expanded_url": "https://x.com/infoBMKG/status/2125158850135568391/photo/1"
+                }
+               ]
+              },
+              "lang": "in",
+              "possibly_sensitive": false
+             },
+             "media_entities2": [
+              {
+               "expanded_url": "https://x.com/infoBMKG/status/2125158850135568391/photo/1",
+               "ext_media_availability": {
+                "status": "Available"
+               },
+               "ext_playlists": [],
+               "id_str": "2125158840845103104",
+               "indices": [
+                274,
+                297
+               ],
+               "media_url_https": "https://pbs.twimg.com/tweet_video_thumb/HX4UtMfacAACzCO.jpg",
+               "original_info": {
+                "height": 350,
+                "width": 328
+               },
+               "type": "animated_gif"
+              }
+             ],
+             "mention_entities": [],
+             "perspective": {
+              "favorited": false,
+              "retweeted": false
+             },
+             "quick_promote_eligibility": {
+              "eligibility": "IneligibleNotVerified"
+             },
+             "rest_id": "2125158850135568391",
+             "url_entities": [],
+             "views": {
+              "count": "14344"
+             }
+            }
+           }
+          }
+         },
+         "entry_id": "tweet-2125158850135568391",
+         "sort_index": "2125166262387474422"
+        },
+        {
+         "content": {
+          "__typename": "TimelineTimelineItem",
+          "client_event_info": {
+           "component": "relevance_prompt_module",
+           "details": {
+            "timelines_details": {}
+           },
+           "element": "relevance_prompt"
+          },
+          "content": {
+           "__isTimelineTimelineItemContent": "TimelinePrompt",
+           "__typename": "TimelinePrompt",
+           "content": {
+            "__typename": "TimelineRelevancePrompt",
+            "confirmation": "Thanks for your help. This feedback will make X better for everyone.",
+            "is_relevant_callback": {
+             "endpoint": "/2/timeline/feedback.json?feedback_type=SearchRelevant&action_metadata=SQwA"
+            },
+            "is_relevant_text": "Yes",
+            "not_relevant_callback": {
+             "endpoint": "/2/timeline/feedback.json?feedback_type=SearchNotRelevant&action_metadata=SQwA"
+            },
+            "not_relevant_text": "No",
+            "title": "Is this post relevant to your search?"
+           }
+          }
+         },
+         "entry_id": "relevanceprompt-0",
+         "sort_index": "2125166262387474392"
+        },
+        {
+         "content": {
+          "__typename": "TimelineTimelineItem",
+          "client_event_info": {
+           "component": "result",
+           "details": {
+            "timelines_details": {}
+           },
+           "element": "tweet"
+          },
+          "content": {
+           "__isTimelineTimelineItemContent": "TimelineTweet",
+           "__typename": "TimelineTweet",
+           "display_type": "Tweet",
+           "tweet_results": {
+            "id": "VHdlZXRSZXN1bHRzOjIxMjUxNTE4NzM2OTkzMzI0MjQ=",
+            "rest_id": "2125151873699332424",
+            "result": {
+             "__isTweetResult": "Tweet",
+             "__typename": "Tweet",
+             "cashtag_attachments": [],
+             "conversation_muted": false,
+             "core": {
+              "user_results": {
+               "id": "VXNlclJlc3VsdHM6MTA4NTQzMzU4",
+               "result": {
+                "__typename": "User",
+                "avatar": {
+                 "image_url": "https://pbs.twimg.com/profile_images/1076479887056154627/u0KZkg3a_normal.jpg"
+                },
+                "core": {
+                 "name": "BMKG",
+                 "screen_name": "infoBMKG"
+                },
+                "follow_request_sent": false,
+                "id": "VXNlcjoxMDg1NDMzNTg=",
+                "identity_profile_labels_highlighted_label": {},
+                "is_following": false,
+                "location": {
+                 "location": "Indonesia"
+                },
+                "parody_commentary_fan_label": "None",
+                "pinned_items": {},
+                "privacy": {
+                 "protected": false
+                },
+                "profile_bio": {
+                 "description": "The official Twitter of BMKG Indonesia - Twitter resmi BMKG - Informasi Cuaca, Iklim, dan Gempabumi di Indonesia - Badan Meteorologi, Klimatologi, dan Geofisika"
+                },
+                "profile_image_shape": "Square",
+                "relationship_counts": {
+                 "followers": 10124827,
+                 "following": 40
+                },
+                "relationship_perspectives": {
+                 "blocking": false,
+                 "followed_by": false,
+                 "following": false,
+                 "muting": false
+                },
+                "rest_id": "108543358",
+                "super_follow_eligible": false,
+                "super_followed_by": false,
+                "super_following": false,
+                "tweet_counts": {
+                 "tweets": 447563
+                },
+                "verification": {
+                 "is_blue_verified": true,
+                 "verified_type": "Government"
+                }
+               }
+              }
+             },
+             "counts": {
+              "bookmark_count": 0,
+              "favorite_count": 2,
+              "quote_count": 0,
+              "reply_count": 0,
+              "retweet_count": 0
+             },
+             "details": {
+              "cashtag_entities": [],
+              "created_at_ms": 1795510664000,
+              "display_text_range": [
+               0,
+               266
+              ],
+              "full_text": "#Gempa Info Gempa Mag:2.2, 24-Nov-26 15:54:56 WIB, Lok: 8.14 LS - 120.46 BT (52 km Utara RUTENG-MANGGARAI-NTT), Kedlmn: 4 km #BMKG\nDisclaimer: Informasi ini mengutamakan kecepatan, sehingga hasil pengolahan data belum stabil dan bisa berubah seiring kelengkapan data https://t.co/eETE0q64Dy",
+              "hashtag_entities": [
+               {
+                "indices": [
+                 0,
+                 6
+                ],
+                "text": "Gempa"
+               },
+               {
+                "indices": [
+                 125,
+                 130
+                ],
+                "text": "BMKG"
+               }
+              ],
+              "smarttags": []
+             },
+             "grok_analysis_button": true,
+             "grok_translated_post_with_availability": {
+              "__typename": "ApiGrokTranslateResponse",
+              "is_available": false
+             },
+             "id": "VHdlZXQ6MjEyNTE1MTg3MzY5OTMzMjQyNA==",
+             "legacy": {
+              "conversation_id_str": "2125151873699332424",
+              "entities": {
+               "media": [
+                {
+                 "expanded_url": "https://x.com/infoBMKG/status/2125151873699332424/photo/1"
+                }
+               ]
+              },
+              "lang": "in",
+              "possibly_sensitive": false
+             },
+             "media_entities2": [
+              {
+               "expanded_url": "https://x.com/infoBMKG/status/2125151873699332424/photo/1",
+               "ext_media_availability": {
+                "status": "Available"
+               },
+               "ext_playlists": [],
+               "id_str": "2125151866896166912",
+               "indices": [
+                267,
+                290
+               ],
+               "media_url_https": "https://pbs.twimg.com/tweet_video_thumb/HX4OXQgasAAJzFf.jpg",
+               "original_info": {
+                "height": 350,
+                "width": 332
+               },
+               "type": "animated_gif"
+              }
+             ],
+             "mention_entities": [],
+             "perspective": {
+              "favorited": false,
+              "retweeted": false
+             },
+             "quick_promote_eligibility": {
+              "eligibility": "IneligibleNotVerified"
+             },
+             "rest_id": "2125151873699332424",
+             "url_entities": [],
+             "views": {
+              "count": "18352"
+             }
+            }
+           }
+          }
+         },
+         "entry_id": "tweet-2125151873699332424",
+         "sort_index": "2125166262387474382"
+        },
+        {
+         "content": {
+          "__typename": "TimelineTimelineCursor",
+          "cursor_type": "Top",
+          "value": "DAACCgACHX4bdL5AJxAKAAMdfht0vj_Y8AgABAAAAAELAAUAAADwRW1QQzZ3QUFBZlEvZ0dKTjB2R3AvQUFBQUJRZGZoUjg2WnV3amhIQnJLbXNGWEFBSFg0T1hwMmF3VWdSQUlFOWc1VlFBQkpTTGt4RWxYQUFFY1J6ZkZaVTRBQWRmaFcvazl1aEtCR3c5WGRBbE9BQUVHMWd3b0RXb0FBUCtPY05wQlVBQUE4R0ZvdlExRkFBRWNURFFxblZBQVVkZmdzS1Axb1I1eEFaeTFFbEZWQUFIWDRVdHZHYnNBY1N4QmRRTjVXZ0FSMTkvbnlmMmhGVEVjd0M3K3FVWUFBZGZoVEdkSnNBV2hCTTlBT21WT0FDCAAGAAAAAAgABwAAAAAMAAgKAAEPBhaL0NRQAAAAAA"
+         },
+         "entry_id": "cursor-top-9223372036854775807",
+         "sort_index": "9223372036854775807"
+        },
+        {
+         "content": {
+          "__typename": "TimelineTimelineCursor",
+          "cursor_type": "Bottom",
+          "value": "DAACCgACHX4bdL5AJxAKAAMdfht0vj_Y8AgABAAAAAILAAUAAADwRW1QQzZ3QUFBZlEvZ0dKTjB2R3AvQUFBQUJRZGZoUjg2WnV3amhIQnJLbXNGWEFBSFg0T1hwMmF3VWdSQUlFOWc1VlFBQkpTTGt4RWxYQUFFY1J6ZkZaVTRBQWRmaFcvazl1aEtCR3c5WGRBbE9BQUVHMWd3b0RXb0FBUCtPY05wQlVBQUE4R0ZvdlExRkFBRWNURFFxblZBQVVkZmdzS1Axb1I1eEFaeTFFbEZWQUFIWDRVdHZHYnNBY1N4QmRRTjVXZ0FSMTkvbnlmMmhGVEVjd0M3K3FVWUFBZGZoVEdkSnNBV2hCTTlBT21WT0FDCAAGAAAAAAgABwAAAAAMAAgKAAEPBhaL0NRQAAAAAA"
+         },
+         "entry_id": "cursor-bottom-0",
+         "sort_index": "0"
+        }
+       ]
+      }
+     ],
+     "response_objects": {}
+    }
+   }
+  }
+ }
+}

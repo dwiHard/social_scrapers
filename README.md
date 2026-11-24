@@ -239,7 +239,7 @@ Mengimpor modulnya otomatis mendaftarkan mapper dengan nama di bawah, sehingga b
 | Modul | Mapper terdaftar |
 |---|---|
 | `cdp_scraper.presets.tiktok` | `tiktok.search`, `tiktok.user_videos`, `tiktok.comments` |
-| `cdp_scraper.presets.twitter` | `twitter.search` |
+| `cdp_scraper.presets.twitter` | `twitter.search` (skema baru `SearchByRawQuery` dan lama `SearchTimeline`; pakai `SEARCH_API_MATCH` untuk `api_match`) |
 | `cdp_scraper.presets.instagram` | `instagram.search`, `instagram.comments`, `instagram.user_profile`, `instagram.user_posts`, `instagram.user_timeline` |
 
 **Instagram** memakai satu URL GraphQL untuk banyak query, jadi parsernya berbasis struktur (response yang bukan

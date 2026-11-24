@@ -2,7 +2,7 @@
 import urllib.parse
 
 from cdp_scraper import (Endpoint, Platform, end_when_empty, make_scroller, make_wait_for)
-from cdp_scraper.presets.twitter import search_mapper
+from cdp_scraper.presets.twitter import SEARCH_API_MATCH, search_mapper
 
 FILTERS = ("since", "until", "min_faves", "min_retweets", "min_replies")
 
@@ -33,7 +33,7 @@ twitter = Platform(
     delay_between_runs=2.0,
     endpoints=[
         Endpoint(
-            "search", url=build_search_url, api_match="SearchTimeline", parser="twitter.search",
+            "search", url=build_search_url, api_match=SEARCH_API_MATCH, parser="twitter.search",
             key="id", validate=validate, label=lambda p: p.get("keyword") or f"from:{p.get('from_user')}",
             limit=20, max_limit=100, max_scrolls=lambda limit: min(30, limit // 10 + 6),
             initial_sleep=4, end=end_when_empty(search_mapper),
