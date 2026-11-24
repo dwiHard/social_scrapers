@@ -97,3 +97,14 @@ comments_mapper = FieldMapper(items="comments", name="tiktok.comments", fields={
 
 for _mapper in (user_videos_mapper, search_mapper, comments_mapper):
     register_mapper(_mapper.name, _mapper, replace=True)
+
+
+# Penanda captcha TikTok (slider/puzzle/pilih objek). Pakai: Platform(..., captcha=TIKTOK_CAPTCHA)
+from ..browser.captcha import CaptchaGuard  # noqa: E402
+
+TIKTOK_CAPTCHA = CaptchaGuard(
+    selectors=("#captcha_container", ".captcha_verify_container", ".captcha-verify-container",
+               "[class*='captcha_verify']", "#tiktok-verify-ele", "iframe[src*='captcha']"),
+    texts=("drag the slider to fit the puzzle", "select 2 objects that are the same", "verify to continue"),
+    wait=60.0,
+)

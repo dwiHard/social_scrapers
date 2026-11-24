@@ -3,6 +3,7 @@ import urllib.parse
 from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, Optional, Tuple, Union
 
+from ..browser.captcha import CaptchaGuard
 from ..config import CDPConfig
 
 
@@ -99,6 +100,7 @@ class Platform:
     overlay_selectors: selector popup/login modal yang ditutup otomatis.
     login_url_hints: potongan URL yang berarti browser belum login (mis. '/login').
     default_scroll: fungsi scroll bawaan semua endpoint platform ini.
+    captcha: CaptchaGuard (atau dict argumennya): jeda otomatis (default 60 detik) saat captcha terdeteksi.
     """
 
     name: str
@@ -108,8 +110,10 @@ class Platform:
     login_url_hints: Tuple[str, ...] = ()
     delay_between_runs: float = 0.0
     default_scroll: Optional[Callable] = None
+    captcha: Union[CaptchaGuard, Dict[str, Any], None] = None
 
     def __post_init__(self):
+        self.captcha = CaptchaGuard.coerce(self.captcha)
         if not isinstance(self.endpoints, dict):
             self.endpoints = {ep.name: ep for ep in self.endpoints}
 

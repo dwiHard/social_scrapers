@@ -93,14 +93,20 @@ class Scraper:
             end_fn=endpoint.end, nav_timeout_ms=endpoint.nav_timeout_ms,
             log=self.log, diag=diag,
             debug=DebugOptions(cfg.debug_screenshots, cfg.debug_dir))
+        if self.platform.captcha:
+            options["captcha"] = self.platform.captcha
+            options["context"] = {"platform": self.platform.name, "endpoint": endpoint.name,
+                                  "label": endpoint.label_for(params)}
         options.update(endpoint.capture_options)
         result = await capture(page, endpoint.build_url(params), endpoint.api_match,
                                parser, endpoint.key, lim, **options)
         for item in result.items:
             for out, name in endpoint.attach_params.items():
                 item[out] = params.get(name)
+        blocked = result.stopped_by == "captcha" and not result.items
         return ScrapeResult(label=endpoint.label_for(params), items=result.items,
-                            status="success" if result.items else "no_data",
+                            status="error" if blocked else ("success" if result.items else "no_data"),
+                            error="Captcha terdeteksi dan tidak terselesaikan" if blocked else None,
                             stopped_by=result.stopped_by, diagnostics=result.diagnostics)
 
     async def run(self, endpoint, params=None, limit=None):

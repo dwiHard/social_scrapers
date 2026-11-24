@@ -4,6 +4,7 @@
 - ``raw``        : CDP mentah lewat websocket ke satu tab (alias: ``websocket``, ``cdp``).
                    Untuk browser yang CDP-nya terbatas, mis. Qt WebEngine / Anoa, yang menolak
                    ``Browser.setDownloadBehavior`` sehingga Playwright gagal connect.
+- ``pydoll``     : seperti ``raw`` tetapi lapisan websocket-nya memakai pydoll (``pip install pydoll-python``).
 - ``auto``       : coba Playwright dulu; kalau ditolak / tidak terpasang, pindah ke ``raw``.
 
 Transport sendiri bisa ditambah dengan ``register_transport(nama, factory)``.
@@ -273,7 +274,7 @@ class RawCDPTransport(Transport):
         try:
             async def probe():
                 ws_url, _id, _owns = await self._resolve(get_logger())
-                conn = await CDPConnection.open(ws_url, headers=auth_headers(self.config), timeout=timeout)
+                conn = await self._open_connection(get_logger(), ws_url, timeout)
                 try:
                     await conn.send("Runtime.evaluate", {"expression": "1+1"}, timeout=timeout)
                 finally:
@@ -319,9 +320,13 @@ class RawCDPTransport(Transport):
             if lock is not None:
                 lock.release()
 
+    async def _open_connection(self, log, ws_url, timeout=10.0):
+        """Titik override: membuka koneksi CDP level-halaman (send/on/off/close/closed)."""
+        return await CDPConnection.open(ws_url, headers=auth_headers(self.config), log=log, timeout=timeout)
+
     async def _connect(self, log, ws_url, target_id, owns):
         cfg = self.config
-        conn = await CDPConnection.open(ws_url, headers=auth_headers(cfg), log=log)
+        conn = await self._open_connection(log, ws_url)
         scheme, netloc = _http_base(cfg.cdp_url)
 
         async def closer():
@@ -368,6 +373,28 @@ def _is_dead_tab(error):
     if isinstance(error, TimeoutError):
         return True
     return isinstance(error, CDPProtocolError) and "crash" in str(error).lower()
+
+
+class PydollTransport(RawCDPTransport):
+    """Lapisan koneksi CDP milik pydoll (ConnectionHandler) + semua fitur RawPage di atasnya.
+
+    Target dipilih lewat HTTP (/json) seperti transport raw, jadi tetap jalan di browser dengan CDP
+    terbatas (Anoa). Fitur tingkat tinggi pydoll (find, humanize, turnstile) TIDAK diekspos di sini.
+    """
+
+    name = "pydoll"
+    engine = "pydoll"
+
+    @property
+    def engine_label(self):
+        return "pydoll (page websocket)"
+
+    async def _open_connection(self, log, ws_url, timeout=10.0):
+        from .pydoll_conn import PydollConnection
+        if self.config.auth_token:
+            log.warning("transport pydoll tidak bisa mengirim header Authorization pada websocket; "
+                        "auth_token hanya dipakai untuk request HTTP (/json).")
+        return await PydollConnection.open(ws_url, log=log, timeout=timeout)
 
 
 _FALLBACK_HINTS = ("not supported", "protocol error", "browser context management",
@@ -436,6 +463,7 @@ _registry = {
     "playwright": lambda config, engine_factory=None: PlaywrightTransport(config, engine_factory),
     "raw": lambda config, engine_factory=None: RawCDPTransport(config),
     "auto": lambda config, engine_factory=None: AutoTransport(config, engine_factory),
+    "pydoll": lambda config, engine_factory=None: PydollTransport(config),
 }
 
 
@@ -451,7 +479,7 @@ def list_transports():
 
 def create_transport(config, engine_factory=None):
     name = ALIASES.get(config.transport, config.transport)
-    if engine_factory is not None and name == "raw":
+    if engine_factory is not None and name in ("raw", "pydoll"):
         raise ValueError("engine_factory hanya untuk transport playwright/auto")
     try:
         factory = _registry[name]

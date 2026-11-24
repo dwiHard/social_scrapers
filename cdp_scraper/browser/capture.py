@@ -1,10 +1,12 @@
 """Capture response API generik (smart scroll & wait)."""
 import asyncio
+import time
 from dataclasses import dataclass, field
 from typing import Any, Dict, List
 
 from ..errors import PageCrashed
 from ..logs import get_logger
+from .captcha import CaptchaGuard, detect_captcha, wait_captcha
 from .diagnostics import DebugOptions, page_diag, save_debug_shot
 
 
@@ -44,8 +46,9 @@ async def capture(page, url, api_match, extract_fn, key_fn, limit,
                   initial_sleep=5, scroll_fn=None, prepare_fn=None, end_fn=None,
                   nav_timeout_ms=60000, wait_until="domcontentloaded",
                   poll_interval=0.5, settle=1.0, final_sleep=1.0, body_parser=None, trace=False,
-                  log=None, diag=None, debug=None):
+                  log=None, diag=None, debug=None, captcha=None, context=None):
     log = log or get_logger()
+    captcha = CaptchaGuard.coerce(captcha)
     diag = {} if diag is None else diag
     debug = debug or DebugOptions()
     matches, match_label = compile_matcher(api_match)
@@ -53,7 +56,9 @@ async def capture(page, url, api_match, extract_fn, key_fn, limit,
 
     items = []
     seen = set()
-    state = {"limit_reached": False, "exhausted": False, "crashed": False}
+    state = {"limit_reached": False, "exhausted": False, "crashed": False, "captcha": False}
+    cap = {"detected": 0, "pauses": 0}
+    notify_tasks = []
     network = {"seen": 0, "matched": 0, "bad_status": 0, "parse_errors": 0, "requests": []}
 
     def check_crash():
@@ -123,27 +128,80 @@ async def capture(page, url, api_match, extract_fn, key_fn, limit,
     page.on("response", handle_resp)
     page.on("crash", on_crash)
     try:
-        log.info(f"Membuka link: {url}")
-        try:
-            nav_resp = await page.goto(url, wait_until=wait_until, timeout=nav_timeout_ms)
-        except Exception as e:
-            if "crash" in str(e).lower():
-                state["crashed"] = True
-            raise
-        check_crash()
-        await asyncio.sleep(initial_sleep)
-        check_crash()
-        await page_diag(page, nav_resp, "after_goto", diag=diag, log=log)
-        check_crash()
+        async def emit(kind, where, found, **extra):
+            """Kirim event captcha ke hook notify di latar belakang (tidak memperpanjang jeda)."""
+            if not captcha.notify:
+                return
+            event = dict(context or {}, event=kind, where=where, marker=found, pause=cap["pauses"],
+                         max_pauses=captcha.max_pauses, wait=captcha.wait, url=page.url, screenshot=None, **extra)
+            if kind != "resolved":
+                try:
+                    event["screenshot"] = await page.screenshot(timeout=5000)
+                except Exception as e:
+                    log.debug(f"screenshot untuk notifikasi gagal: {e}")
 
-        if prepare_fn:
-            await prepare_fn(page)
-            check_crash()
+            async def deliver():
+                try:
+                    outcome = captcha.notify(event)
+                    if asyncio.iscoroutine(outcome):
+                        await outcome
+                except Exception as e:
+                    log.warning(f"Hook notify captcha error: {e}")
+            notify_tasks.append(asyncio.ensure_future(deliver()))
+
+        async def handle_captcha(where):
+            """Jeda bila ada captcha. False = captcha tidak kunjung selesai (menyerah)."""
+            found = await detect_captcha(page, captcha) if captcha else None
+            while found:
+                if cap["pauses"] >= captcha.max_pauses:
+                    state["captcha"] = True
+                    log.error(f"Captcha masih ada setelah {cap['pauses']}x jeda {captcha.wait:g} detik. Menyerah.")
+                    await emit("gave_up", where, found)
+                    return False
+                cap["pauses"] += 1
+                cap["detected"] += 1
+                await save_debug_shot(page, "debug_captcha.png", debug=debug, log=log)
+                log.warning(f"Captcha terdeteksi ({found}) saat {where}. Jeda {captcha.wait:g} detik "
+                            f"(jeda ke-{cap['pauses']}/{captcha.max_pauses}); selesaikan manual bila perlu.")
+                await emit("detected", where, found)
+                started = time.monotonic()
+                found = await wait_captcha(page, captcha, log)
+                if not found:
+                    await emit("resolved", where, None, elapsed=time.monotonic() - started)
+            return True
+
+        async def open_and_prepare():
+            while True:
+                log.info(f"Membuka link: {url}")
+                try:
+                    nav_resp = await page.goto(url, wait_until=wait_until, timeout=nav_timeout_ms)
+                except Exception as e:
+                    if "crash" in str(e).lower():
+                        state["crashed"] = True
+                    raise
+                check_crash()
+                await asyncio.sleep(initial_sleep)
+                check_crash()
+                await page_diag(page, nav_resp, "after_goto", diag=diag, log=log)
+                check_crash()
+                pauses_before = cap["pauses"]
+                if not await handle_captcha("pembukaan halaman"):
+                    return False
+                if cap["pauses"] > pauses_before and not items and captcha.reload_if_empty:
+                    log.info("Captcha selesai, belum ada data: membuka ulang halaman.")
+                    continue            # terbatas oleh max_pauses (captcha muncul lagi = jeda lagi)
+                break
+            if prepare_fn:
+                await prepare_fn(page)
+                check_crash()
+            return True
+
+        opened = await open_and_prepare()
 
         log.info(f"Data awal tertangkap: {len(items)}")
 
         scroller = scroll_fn or default_scroll
-        for i in range(max_scrolls):
+        for i in range(max_scrolls if opened else 0):
             check_crash()
             if state["limit_reached"]:
                 log.info("Limit tercapai, berhenti scroll.")
@@ -171,6 +229,17 @@ async def capture(page, url, api_match, extract_fn, key_fn, limit,
                 waited += poll_interval
             check_crash()
 
+            if captcha:
+                pauses_before = cap["pauses"]
+                if not await handle_captcha(f"scroll {scrolls}"):
+                    break
+                if cap["pauses"] > pauses_before:       # baru saja jeda karena captcha
+                    stalled = 0
+                    if not items and captcha.reload_if_empty:
+                        if not await open_and_prepare():
+                            break
+                    continue
+
             if len(items) == before:
                 if state["exhausted"]:
                     break
@@ -187,7 +256,9 @@ async def capture(page, url, api_match, extract_fn, key_fn, limit,
                 break
 
         await asyncio.sleep(final_sleep)
-        if state["limit_reached"]:
+        if state["captcha"]:
+            stopped_by = "captcha"
+        elif state["limit_reached"]:
             stopped_by = "limit"
         elif state["exhausted"]:
             stopped_by = "exhausted"
@@ -201,8 +272,15 @@ async def capture(page, url, api_match, extract_fn, key_fn, limit,
             await page_diag(page, None, "stalled", diag=diag, log=log)
             await save_debug_shot(page, "debug_stalled.png", debug=debug, log=log)
     finally:
+        if notify_tasks:        # beri waktu alert terkirim sebelum capture selesai
+            await asyncio.wait(notify_tasks, timeout=20)
+            for task in notify_tasks:
+                if not task.done():
+                    task.cancel()
         diag["network"] = network
         diag["scrolls"] = scrolls
+        if captcha:
+            diag["captcha"] = dict(cap, blocked=state["captcha"])
         try:
             page.remove_listener("response", handle_resp)
             page.remove_listener("crash", on_crash)
