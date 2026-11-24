@@ -3,9 +3,11 @@ from .browser.actions import close_overlays, make_scroller, make_wait_for, scrol
 from .browser.capture import CaptureResult, capture, capture_api
 from .browser.session import (CDPSessionManager, default_manager, get_manager,
                               is_browser_busy, playwright_session)
+from .browser.captcha import CaptchaGuard, detect_captcha
 from .browser.rawpage import CDPConnection, RawPage
-from .browser.transports import (RawCDPTransport, Transport, create_transport, list_transports,
+from .browser.transports import (PydollTransport, RawCDPTransport, Transport, create_transport, list_transports,
                                  register_transport)
+from .notify import TelegramNotifier, notify_hook
 from .config import CDPConfig, get_default_config, set_default_config, setup_cdp
 from .errors import BrowserBusy, CDPError, PageCrashed
 from .health import check_cdp
@@ -19,7 +21,7 @@ from .platforms import (Endpoint, Platform, ScrapeResult, Scraper, end_when_empt
 __all__ = [
     "__version__", "CDPConfig", "setup_cdp", "get_default_config", "set_default_config",
     "CDPError", "PageCrashed", "BrowserBusy", "check_cdp", "JobLogger", "get_logger", "setup_logging",
-    "RawPage", "CDPConnection", "Transport", "RawCDPTransport", "register_transport",
+    "CaptchaGuard", "TelegramNotifier", "notify_hook", "detect_captcha", "RawPage", "CDPConnection", "Transport", "RawCDPTransport", "PydollTransport", "register_transport",
     "list_transports", "create_transport",
     "CDPSessionManager", "get_manager", "default_manager", "playwright_session", "is_browser_busy",
     "capture", "capture_api", "CaptureResult",
