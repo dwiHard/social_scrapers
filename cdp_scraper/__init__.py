@@ -7,6 +7,7 @@ from .browser.captcha import CaptchaGuard, detect_captcha
 from .browser.rawpage import CDPConnection, RawPage
 from .browser.transports import (PydollTransport, RawCDPTransport, Transport, create_transport, list_transports,
                                  register_transport)
+from .envfile import load_env_file
 from .notify import TelegramNotifier, notify_hook
 from .config import CDPConfig, get_default_config, set_default_config, setup_cdp
 from .errors import BrowserBusy, CDPError, PageCrashed
@@ -21,7 +22,7 @@ from .platforms import (Endpoint, Platform, ScrapeResult, Scraper, end_when_empt
 __all__ = [
     "__version__", "CDPConfig", "setup_cdp", "get_default_config", "set_default_config",
     "CDPError", "PageCrashed", "BrowserBusy", "check_cdp", "JobLogger", "get_logger", "setup_logging",
-    "CaptchaGuard", "TelegramNotifier", "notify_hook", "detect_captcha", "RawPage", "CDPConnection", "Transport", "RawCDPTransport", "PydollTransport", "register_transport",
+    "CaptchaGuard", "load_env_file", "TelegramNotifier", "notify_hook", "detect_captcha", "RawPage", "CDPConnection", "Transport", "RawCDPTransport", "PydollTransport", "register_transport",
     "list_transports", "create_transport",
     "CDPSessionManager", "get_manager", "default_manager", "playwright_session", "is_browser_busy",
     "capture", "capture_api", "CaptureResult",

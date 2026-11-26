@@ -1,4 +1,5 @@
 import asyncio
+import os
 import time
 import unittest
 
@@ -40,6 +41,70 @@ class CaptureTests(unittest.TestCase):
         res = run(capture(page, "u", "api/list", PARSER, "id", 10,
                           **dict(FAST, scroll_fn=scroll_emit, max_scrolls=3, stall_limit=3, body_parser=parse)))
         self.assertEqual([i["id"] for i in res.items], ["a", "b", "c", "d"])
+
+    def test_network_summary_logged(self):
+        from cdp_scraper.logs import RecordingLog, get_logger
+        log = RecordingLog(get_logger("t"))
+        page = FakePage([batch("a")])
+        run(capture(page, "u", "api/list", PARSER, "id", 10, log=log, **dict(FAST, scroll_fn=scroll_emit, max_scrolls=1)))
+        text = "\n".join(log.lines())
+        self.assertRegex(text, r"Network: xhr/fetch=\d+ cocok=\d+")
+        self.assertNotIn("tidak ada response cocok", text)
+        log2 = RecordingLog(get_logger("t"))
+        run(capture(FakePage([batch("a")]), "u", "pola/lain", PARSER, "id", 10, log=log2, **dict(FAST, max_scrolls=0)))
+        self.assertIn("tidak ada response cocok 'pola/lain'", "\n".join(log2.lines()))
+
+    def test_body_read_timeout_is_reported(self):
+        from cdp_scraper.logs import RecordingLog, get_logger
+        page = FakePage([batch("a")])
+
+        log = RecordingLog(get_logger("t"))
+        import tests.fakes as fk
+        orig_json = fk.FakeResponse.json
+
+        async def slow_json(self):
+            await asyncio.sleep(5)
+        fk.FakeResponse.json = slow_json
+        try:
+            res = run(capture(page, "u", "api/list", PARSER, "id", 10, log=log, body_timeout=0.2,
+                              **dict(FAST, max_scrolls=0)))
+        finally:
+            fk.FakeResponse.json = orig_json
+        self.assertEqual(res.items, [])
+        self.assertIn("Body tidak terbaca dalam", "\n".join(log.lines()))
+        self.assertGreaterEqual(res.diagnostics["network"]["parse_errors"], 1)
+
+    def test_dump_prints_and_saves_matched_payload(self):
+        import json, os, tempfile
+        from cdp_scraper.logs import RecordingLog, get_logger
+        log = RecordingLog(get_logger("t"))
+        with tempfile.TemporaryDirectory() as tmp:
+            target = os.path.join(tmp, "dump")
+            run(capture(FakePage([batch("a", "b")]), "u", "api/list", PARSER, "id", 10, log=log, dump=target,
+                        dump_preview=200, **dict(FAST, scroll_fn=scroll_emit, max_scrolls=0)))
+            files = os.listdir(target)
+            self.assertTrue(files)
+            saved = json.load(open(os.path.join(target, files[0])))
+            self.assertEqual([i["id"] for i in saved["items"]], ["a", "b"])
+        text = "\n".join(log.lines())
+        self.assertIn("Dump #1", text)
+        self.assertIn('"id": "a"', text)
+        self.assertIn("disimpan lengkap", text)
+
+    def test_dump_env_and_off_by_default(self):
+        from cdp_scraper.browser.capture import resolve_dump_dir
+        os.environ.pop("CDP_DUMP", None)
+        self.assertIsNone(resolve_dump_dir(None))
+        self.assertEqual(resolve_dump_dir(True), "debug_api")
+        os.environ["CDP_DUMP"] = "1"
+        try:
+            self.assertEqual(resolve_dump_dir(None), "debug_api")
+            os.environ["CDP_DUMP"] = "/tmp/x"
+            self.assertEqual(resolve_dump_dir(None), "/tmp/x")
+            os.environ["CDP_DUMP"] = "off"
+            self.assertIsNone(resolve_dump_dir(None))
+        finally:
+            os.environ.pop("CDP_DUMP", None)
 
     def test_default_loader_fails_on_prefixed_body(self):
         import json

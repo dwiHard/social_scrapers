@@ -1,4 +1,6 @@
+import collections
 import logging
+import time
 
 LOGGER_NAME = "cdp_scraper"
 DEFAULT_JOB = "cdp"
@@ -54,3 +56,45 @@ def get_logger(job=DEFAULT_JOB):
 
 def setup_logging(level=logging.INFO, fmt=LOG_FORMAT):
     logging.basicConfig(level=level, format=fmt, style="{", datefmt="%Y-%m-%d %H:%M:%S")
+
+
+class RecordingLog:
+    """Pembungkus logger yang meneruskan semua log lalu menyimpan N baris terakhir (untuk lampiran alert)."""
+
+    def __init__(self, inner, max_lines=300):
+        self._inner = inner
+        self._lines = collections.deque(maxlen=max_lines)
+
+    def __getattr__(self, name):
+        return getattr(self._inner, name)
+
+    def bind(self, job):
+        return RecordingLog(self._inner.bind(job), self._lines.maxlen)
+
+    def _record(self, level, detail):
+        job = getattr(self._inner, "job", DEFAULT_JOB)
+        self._lines.append(f"{time.strftime('%H:%M:%S')} [{level}] [{job}] {detail}")
+
+    def lines(self, last=None):
+        items = list(self._lines)
+        return items[-last:] if last else items
+
+    def success(self, detail):
+        self._record("OK", detail)
+        self._inner.success(detail)
+
+    def info(self, detail):
+        self._record("INFO", detail)
+        self._inner.info(detail)
+
+    def warning(self, detail):
+        self._record("WARN", detail)
+        self._inner.warning(detail)
+
+    def error(self, detail, exc_info=False):
+        self._record("ERROR", detail)
+        self._inner.error(detail, exc_info=exc_info)
+
+    def debug(self, detail):
+        self._record("DEBUG", detail)
+        self._inner.debug(detail)

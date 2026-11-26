@@ -499,7 +499,7 @@ Library hanya memakai logger `cdp_scraper` (tanpa handler). Aktifkan dengan `set
 Setiap scraping mengisi `diagnostics["network"]`: `seen` (request XHR/fetch yang terlihat), `matched` (yang cocok `api_match`),
 `bad_status`, `parse_errors`, dan `requests` (40 pertama: method, status, tipe, matched, URL), plus `diagnostics["scrolls"]`.
 Ini cara tercepat membedakan "URL tidak cocok" (`matched: 0`) dari "body tidak terbaca" (`parse_errors > 0`) dan
-"parser tidak menemukan data" (`matched > 0`, hasil kosong). `capture_options={"trace": True}` mencatat tiap request ke log.
+"parser tidak menemukan data" (`matched > 0`, hasil kosong). `capture_options={"trace": True}` (atau env `CDP_TRACE=1`; `body_timeout=30` membatasi waktu baca body) mencatat tiap request xhr/fetch ke log (`Trace: METHOD status tipe url`). `capture_options={"dump": True}` (atau env `CDP_DUMP=1`, atau path folder) mencetak awal isi tiap response yang cocok `api_match` (`dump_preview=1500` karakter) dan menyimpannya lengkap sebagai JSON di folder `debug_api/`. Di akhir tiap capture selalu tercetak ringkasan `Network: xhr/fetch=… cocok=… status_buruk=… gagal_parse=…`; bila `cocok=0`, 15 request pertama ikut dicetak supaya pola `api_match` mudah dicari.
 
 ## 🐘 Kafka / Redpanda
 

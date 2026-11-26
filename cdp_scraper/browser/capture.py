@@ -1,11 +1,14 @@
 """Capture response API generik (smart scroll & wait)."""
 import asyncio
+import json
+import os
+import re
 import time
 from dataclasses import dataclass, field
 from typing import Any, Dict, List
 
 from ..errors import PageCrashed
-from ..logs import get_logger
+from ..logs import RecordingLog, get_logger
 from .captcha import CaptchaGuard, detect_captcha, wait_captcha
 from .diagnostics import DebugOptions, page_diag, save_debug_shot
 
@@ -21,6 +24,39 @@ def compile_matcher(match):
         return match, getattr(match, "__name__", "callable")
     text = str(match)
     return (lambda url: text in url), text
+
+
+def resolve_dump_dir(dump):
+    """`dump=True` atau env CDP_DUMP=1 -> folder `debug_api`; teks lain dianggap path folder; kosong -> None."""
+    value = dump if dump not in (None, "") else os.environ.get("CDP_DUMP", "").strip()
+    if value in (None, "", False) or str(value).lower() in ("0", "false", "no", "off"):
+        return None
+    if value is True or str(value).lower() in ("1", "true", "yes", "on"):
+        return "debug_api"
+    return str(value)
+
+
+def dump_payload(directory, label, number, payload, preview, log):
+    """Cetak isi response yang cocok ke log (dipotong `preview` karakter) dan simpan lengkap ke file JSON."""
+    try:
+        text = json.dumps(payload, ensure_ascii=False, indent=1, default=str)
+    except Exception as e:
+        log.warning(f"Dump: payload tidak bisa diserialisasi: {e}")
+        return None
+    head = text[:preview] if preview else ""
+    if head:
+        log.info(f"Dump #{number} ({len(text)} karakter), awal isi:\n{head}" + (" ..." if len(text) > len(head) else ""))
+    try:
+        os.makedirs(directory, exist_ok=True)
+        name = re.sub(r"[^A-Za-z0-9]+", "_", str(label))[:40].strip("_") or "api"
+        path = os.path.join(directory, f"{time.strftime('%Y%m%d_%H%M%S')}_{number:02d}_{name}.json")
+        with open(path, "w", encoding="utf-8") as handle:
+            handle.write(text)
+        log.info(f"Dump #{number} disimpan lengkap: {path}")
+        return path
+    except OSError as e:
+        log.warning(f"Dump: gagal menyimpan file ({e})")
+        return None
 
 
 def key_getter(key):
@@ -41,14 +77,45 @@ class CaptureResult:
     diagnostics: Dict[str, Any] = field(default_factory=dict)
 
 
+def build_debug_text(event, log, diag, network, items, cap, tail=120, max_chars=100_000):
+    """Ringkasan diagnostik + ekor log run ini, sebagai teks untuk lampiran alert."""
+    lines = [f"Waktu     : {time.strftime('%Y-%m-%d %H:%M:%S')}",
+             f"Kejadian  : {event.get('event')} ({event.get('where')}); jeda {event.get('pause')}/{event.get('max_pauses')}",
+             f"Target    : {event.get('platform')} / {event.get('endpoint')} ({event.get('label')})",
+             f"URL       : {event.get('url')}",
+             f"Penanda   : {event.get('marker')}",
+             f"Engine    : {diag.get('engine')}",
+             f"Data      : {len(items)} item terkumpul",
+             f"Jaringan  : " + ", ".join(f"{k}={network.get(k)}" for k in ("seen", "matched", "bad_status", "parse_errors")),
+             f"Captcha   : {cap}"]
+    for tag in ("after_goto", "no_items", "stalled"):
+        info = diag.get(tag)
+        if isinstance(info, dict):
+            lines.append(f"Halaman[{tag}]: " + ", ".join(
+                f"{k}={str(v)[:120]}" for k, v in info.items() if k not in ("tag", "ua") and v not in (None, "")))
+    recent = [r["url"] for r in network.get("requests", [])[-8:] if isinstance(r, dict) and r.get("url")]
+    if recent:
+        lines.append("Request terakhir:")
+        lines += [f"  {u[:160]}" for u in recent]
+    lines.append("")
+    lines.append(f"--- log (maks {tail} baris terakhir) ---")
+    lines += log.lines(tail) if hasattr(log, "lines") else []
+    return "\n".join(lines)[-max_chars:]
+
+
 async def capture(page, url, api_match, extract_fn, key_fn, limit,
                   max_scrolls=8, max_wait=8.0, stall_limit=3,
                   initial_sleep=5, scroll_fn=None, prepare_fn=None, end_fn=None,
                   nav_timeout_ms=60000, wait_until="domcontentloaded",
-                  poll_interval=0.5, settle=1.0, final_sleep=1.0, body_parser=None, trace=False,
+                  poll_interval=0.5, settle=1.0, final_sleep=1.0, body_parser=None, trace=False, body_timeout=30.0,
+                  dump=None, dump_preview=1500,
                   log=None, diag=None, debug=None, captcha=None, context=None):
     log = log or get_logger()
+    trace = bool(trace) or os.environ.get("CDP_TRACE", "").strip().lower() in ("1", "true", "yes", "on")
+    dump_dir = resolve_dump_dir(dump)
     captcha = CaptchaGuard.coerce(captcha)
+    if captcha and captcha.notify:
+        log = RecordingLog(log)       # simpan log run ini untuk dilampirkan di alert
     diag = {} if diag is None else diag
     debug = debug or DebugOptions()
     matches, match_label = compile_matcher(api_match)
@@ -111,13 +178,27 @@ async def capture(page, url, api_match, extract_fn, key_fn, limit,
             network["bad_status"] += 1
             log.warning(f"API: {match_label} status {res.status}: {res.url[:150]}")
             return
+        if trace:
+            log.info(f"Trace: COCOK {match_label} -> membaca body: {res.url[:120]}")
         try:
-            payloads = [await res.json()] if body_parser is None else list(body_parser(await res.text()))
+            if body_parser is None:
+                payloads = [await asyncio.wait_for(res.json(), body_timeout)]
+            else:
+                payloads = list(body_parser(await asyncio.wait_for(res.text(), body_timeout)))
+        except asyncio.TimeoutError:
+            network["parse_errors"] += 1
+            log.warning(f"API: Body tidak terbaca dalam {body_timeout:.0f} detik ({match_label}): {res.url[:120]}")
+            return
         except Exception as e:
             network["parse_errors"] += 1
             log.warning(f"API: Gagal parse body ({match_label}): {e}")
             return
+        if trace:
+            log.info(f"Trace: body terbaca ({len(payloads)} payload)")
         for data_json in payloads:
+            if dump_dir:
+                network["dumped"] = network.get("dumped", 0) + 1
+                dump_payload(dump_dir, match_label, network["dumped"], data_json, dump_preview, log)
             ingest(data_json)
             if state["limit_reached"]:
                 break
@@ -131,6 +212,9 @@ async def capture(page, url, api_match, extract_fn, key_fn, limit,
         async def emit(kind, where, found, **extra):
             """Kirim event captcha ke hook notify di latar belakang (tidak memperpanjang jeda)."""
             if not captcha.notify:
+                if kind == "detected":
+                    log.warning("Alert captcha tidak aktif: tidak ada hook notify "
+                                "(untuk Telegram isi TELEGRAM_BOT_TOKEN dan TELEGRAM_CHAT_ID).")
                 return
             event = dict(context or {}, event=kind, where=where, marker=found, pause=cap["pauses"],
                          max_pauses=captcha.max_pauses, wait=captcha.wait, url=page.url, screenshot=None, **extra)
@@ -139,6 +223,7 @@ async def capture(page, url, api_match, extract_fn, key_fn, limit,
                     event["screenshot"] = await page.screenshot(timeout=5000)
                 except Exception as e:
                     log.debug(f"screenshot untuk notifikasi gagal: {e}")
+                event["debug_text"] = build_debug_text(event, log, diag, network, items, cap)
 
             async def deliver():
                 try:
@@ -279,6 +364,14 @@ async def capture(page, url, api_match, extract_fn, key_fn, limit,
                     task.cancel()
         diag["network"] = network
         diag["scrolls"] = scrolls
+        log.info(f"Network: xhr/fetch={network['seen']} cocok={network['matched']} "
+                 f"status_buruk={network['bad_status']} gagal_parse={network['parse_errors']} (pola: {match_label})")
+        if not network["matched"]:      # tidak ada yang cocok: tampilkan request yang terlihat agar mudah cari pola
+            shown = network["requests"][:15]
+            log.warning(f"Network: tidak ada response cocok '{match_label}'. "
+                        + (f"{len(network['requests'])} request terlihat:" if shown else "Tidak ada request xhr/fetch terlihat."))
+            for r in shown:
+                log.warning(f"  {r['method']} {r['status']} {r['type'] or '-'} {r['url']}")
         if captcha:
             diag["captcha"] = dict(cap, blocked=state["captcha"])
         try:
